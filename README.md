@@ -1,4 +1,4 @@
-# LibretroFrontend for PPSSPP
+# RetroBB
 
 ## Overview
 Libretro is a simple but powerful development interface that allows the creation of emulators, game engines, and media players to be easily ported to various platforms. It provides a common API that developers can use to create "cores" that can be run on any libretro-compatible frontend.
@@ -16,20 +16,27 @@ The goal of this project is to implement a minimal frontend for the PPSSPP core 
 
 ## Relevant Documentation
 
-> The source code for PPSSPP is located in the [`Lib/ppsspp-master`](https://github.com/Backbone-Labs/RetroBB-iOS/tree/main/Lib/ppsspp-master) directory.
+### Local Files
 
-### LibretroFrontend.swift
+#### LibretroFrontend.swift
 This file contains the main implementation of the libretro frontend.
 
-### RetroBBApp.swift
+#### RetroBBApp.swift
 The main entry point for the SwiftUI app. It sets up the app structure and initializes the main view.
 
-### ContentView.swift
+#### ContentView.swift
 The main SwiftUI view that presents the user interface, including the emulator view and controls.
 
-### libretro.h
+#### libretro.h
 The C header file that defines the libretro API. This file specifies the interface that the frontend must implement to communicate with the libretro core.
 
-For detailed information on the libretro API, refer to the [Libretro Documentation](https://docs.libretro.com/).
+#### ppsspp_libretro.dylib
+This is the dynamic library that contains the PPSSPP core implementation. It is used to run the emulator and provide the necessary functionality to the frontend.
+The source code for the this core is located in the [`Lib/ppsspp-master`](https://github.com/Backbone-Labs/RetroBB-iOS/tree/main/Lib/ppsspp-master) directory.
 
-For more information about PPSSPP, visit the [PPSSPP GitHub repository](https://github.com/hrydgard/ppsspp).
+### Web Resources
+
+- [Libretro Documentation](https://docs.libretro.com/).
+- [Libretro Frontend Development](https://docs.libretro.com/development/frontends/).
+- [Retroarch iOS Reference](https://docs.libretro.com/development/retroarch/compilation/ios/).
+- [PPSSPP GitHub](https://github.com/hrydgard/ppsspp).
