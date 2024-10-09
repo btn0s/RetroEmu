@@ -306,6 +306,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = RetroBB/RetroBB.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"RetroBB/Preview Content\"";
@@ -324,6 +325,8 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/RetroBB",
+					"$(PROJECT_DIR)/Lib/ppsspp-master/ext/vulkan/iOS/Frameworks",
+					"$(PROJECT_DIR)/Lib/ppsspp-master/ext/vulkan/macOS/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.btn0s.RetroBB;
@@ -342,6 +345,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = RetroBB/RetroBB.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"RetroBB/Preview Content\"";
@@ -360,6 +364,8 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/RetroBB",
+					"$(PROJECT_DIR)/Lib/ppsspp-master/ext/vulkan/iOS/Frameworks",
+					"$(PROJECT_DIR)/Lib/ppsspp-master/ext/vulkan/macOS/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.btn0s.RetroBB;
