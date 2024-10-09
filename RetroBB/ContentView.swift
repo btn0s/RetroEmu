@@ -1,6 +1,17 @@
 import SwiftUI
 import Foundation
 
+enum EmulatorError: LocalizedError {
+    case coreNotFound
+    
+    var localizedDescription: String {
+        switch self {
+        case .coreNotFound:
+            return "Could not find the ppsspp_libretro.dylib core."
+        }
+    }
+}
+
 class EmulatorManager: ObservableObject {
     @Published var isRunning = false
     @Published var errorMessage: String?
@@ -10,21 +21,13 @@ class EmulatorManager: ObservableObject {
         frontend = LibretroFrontend()
         
         do {
-            // Try to find the core in the Frameworks directory
             guard let corePath = Bundle.main.path(forResource: "ppsspp_libretro", ofType: "dylib", inDirectory: "Frameworks") else {
-                throw NSError(domain: "EmulatorError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Core not found in app bundle"])
+                throw EmulatorError.coreNotFound
             }
 
-            print("Core found at path: \(corePath)")
+            try frontend?.setupCore(at: corePath)
 
-            // Find the ROM
-            guard let romPath = Bundle.main.path(forResource: "gow", ofType: "iso") else {
-                throw NSError(domain: "EmulatorError", code: 2, userInfo: [NSLocalizedDescriptionKey: "ROM not found in app bundle"])
-            }
-
-            print("ROM found at path: \(romPath)")
-
-            try frontend?.startEmulator(corePath: corePath, romPath: romPath)
+            frontend?.runCore()
             isRunning = true
             errorMessage = nil
         } catch {
@@ -34,7 +37,7 @@ class EmulatorManager: ObservableObject {
     }
     
     func stopEmulator() {
-        frontend?.stopEmulator()
+//        frontend?.unloadGame()
         frontend = nil
         isRunning = false
     }
@@ -69,14 +72,14 @@ struct ContentView: View {
                 Button("Stop Emulator") {
                     emulatorManager.stopEmulator()
                 }
-                .defaultButtonStyle() // Apply the default button style
+                .defaultButtonStyle()
             } else {
                 Text("Emulator is not running")
                     .font(.headline)
                 Button("Start Emulator") {
                     emulatorManager.startEmulator()
                 }
-                .defaultButtonStyle() // Apply the default button style
+                .defaultButtonStyle()
             }
             
             if let errorMessage = emulatorManager.errorMessage {
