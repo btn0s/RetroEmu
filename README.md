@@ -31,7 +31,7 @@ The main SwiftUI view that presents the user interface, including the emulator v
 The C header file that defines the libretro API. This file specifies the interface that the frontend must implement to communicate with the libretro core.
 
 #### ppsspp_libretro.dylib
-This is the dynamic library that contains the PPSSPP core implementation. It is used to run the emulator and provide the necessary functionality to the frontend.
+This is the dynamic library that contains the PPSSPP core implementation. This is compiled out into a .dylib file and linked to the frontend.
 The source code for the this core is located in the [`Lib/ppsspp-master`](https://github.com/Backbone-Labs/RetroBB-iOS/tree/main/Lib/ppsspp-master) directory.
 
 ### Web Resources
