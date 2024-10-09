@@ -6,7 +6,7 @@ Libretro is a simple but powerful development interface that allows the creation
 One of the most popular frontends for libretro is [RetroArch](https://www.retroarch.com/), which provides a comprehensive interface for running a wide variety of emulation cores. RetroArch is known for its extensive feature set, including support for multiple platforms, advanced configuration options, and a unified interface for managing and running games.
 
 ## Goal
-The goal of this project is to implement a minimal frontend for the PPSSPP core using Swift. PPSSPP is a PSP emulator that has been ported to the libretro API, allowing it to be used as a core in libretro-compatible frontends. The source code for PPSSPP is located in the [`Lib/ppsspp-master`](https://github.com/Backbone-Labs/RetroBB-iOS/tree/main/Lib/ppsspp-master) directory. This frontend will enable basic PSP game emulation through a simple iOS interface, focusing on essential functionality without the extensive features of RetroArch.
+The goal of this project is to implement a minimal frontend for the PPSSPP core using Swift. PPSSPP is a PSP emulator that has been ported to the libretro API, allowing it to be used as a core in libretro-compatible frontends. This frontend will enable basic PSP game emulation through a simple iOS interface, focusing on essential functionality without the extensive features of RetroArch.
 
 ## Structure
 - `LibretroFrontend.swift`: Core implementation of the libretro frontend
@@ -15,6 +15,8 @@ The goal of this project is to implement a minimal frontend for the PPSSPP core 
 - `libretro.h`: C header defining the libretro API
 
 ## Relevant Documentation
+
+> The source code for PPSSPP is located in the [`Lib/ppsspp-master`](https://github.com/Backbone-Labs/RetroBB-iOS/tree/main/Lib/ppsspp-master) directory.
 
 ### LibretroFrontend.swift
 This file contains the main implementation of the libretro frontend.
