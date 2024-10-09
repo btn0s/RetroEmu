@@ -1,7 +1,7 @@
 # RetroBB
 
 ## Overview
-Libretro is a simple but powerful development interface that allows the creation of emulators, game engines, and media players to be easily ported to various platforms. It provides a common API that developers can use to create "cores" that can be run on any libretro-compatible frontend.
+[Libretro](https://docs.libretro.com/) is a simple but powerful development interface that allows the creation of emulators, game engines, and media players to be easily ported to various platforms. It provides a common API that developers can use to create "cores" that can be run on any libretro-compatible frontend.
 
 One of the most popular frontends for libretro is [RetroArch](https://www.retroarch.com/), which provides a comprehensive interface for running a wide variety of emulation cores. RetroArch is known for its extensive feature set, including support for multiple platforms, advanced configuration options, and a unified interface for managing and running games.
 
@@ -34,7 +34,7 @@ The C header file that defines the libretro API. This file specifies the interfa
 This is the dynamic library that contains the PPSSPP core implementation. This is compiled out into a .dylib file and linked to the frontend.
 The source code for the this core is located in the [`Lib/ppsspp-master`](https://github.com/Backbone-Labs/RetroBB-iOS/tree/main/Lib/ppsspp-master) directory.
 
-### Web Resources
+### Relevant Links
 
 - [Libretro Documentation](https://docs.libretro.com/).
 - [Libretro Frontend Development](https://docs.libretro.com/development/frontends/).
