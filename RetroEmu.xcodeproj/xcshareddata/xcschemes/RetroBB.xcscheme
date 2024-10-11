@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "7B49F8F42CB45F200001979B"
-               BuildableName = "RetroBB.app"
-               BlueprintName = "RetroBB"
-               ReferencedContainer = "container:RetroBB.xcodeproj">
+               BuildableName = "RetroEmu.app"
+               BlueprintName = "RetroEmu"
+               ReferencedContainer = "container:RetroEmu.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -47,9 +47,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7B49F8F42CB45F200001979B"
-            BuildableName = "RetroBB.app"
-            BlueprintName = "RetroBB"
-            ReferencedContainer = "container:RetroBB.xcodeproj">
+            BuildableName = "RetroEmu.app"
+            BlueprintName = "RetroEmu"
+            ReferencedContainer = "container:RetroEmu.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <AdditionalOptions>
@@ -71,9 +71,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "7B49F8F42CB45F200001979B"
-            BuildableName = "RetroBB.app"
-            BlueprintName = "RetroBB"
-            ReferencedContainer = "container:RetroBB.xcodeproj">
+            BuildableName = "RetroEmu.app"
+            BlueprintName = "RetroEmu"
+            ReferencedContainer = "container:RetroEmu.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

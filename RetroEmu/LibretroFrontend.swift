@@ -15,6 +15,8 @@ class LibretroFrontend {
     private var retro_run: (() -> Void)?
     private var retro_get_system_av_info: ((UnsafeMutableRawPointer) -> Void)?
     
+    private var debug = true
+    
     // MARK: - Initialization
     
     init() {
@@ -36,15 +38,16 @@ class LibretroFrontend {
         try? fileManager.createDirectory(atPath: savesDir, withIntermediateDirectories: true, attributes: nil)
         try? fileManager.createDirectory(atPath: assetsDir, withIntermediateDirectories: true, attributes: nil)
         
-        print("System directory: \(systemDir)")
-        print("Saves directory: \(savesDir)")
-        print("Assets directory: \(assetsDir)")
+        log("System directory: \(systemDir)")
+        log("Saves directory: \(savesDir)")
+        log("Assets directory: \(assetsDir)")
     }
     
     // MARK: - Audio Setup
     
     private func setupAudio() {
         audioEngine = AVAudioEngine()
+        log("Audio engine initialized")
         // Further audio setup would go here
     }
     
@@ -56,8 +59,10 @@ class LibretroFrontend {
             if let data = data?.assumingMemoryBound(to: retro_log_callback.self) {
                 data.pointee.log = { (level: UInt32, fmt: UnsafePointer<CChar>?, args: OpaquePointer) in
                     guard let fmt = fmt else { return }
+                    print("\(fmt)")
                     let message = String(cString: fmt)
-                    print("Libretro [\(level)]: \(message)")
+                    let levelString = ["DEBUG", "INFO", "WARN", "ERROR"][Int(level)]
+                    print("Libretro [\(levelString)]: \(message)")
                 }
                 return true
             }
@@ -78,7 +83,23 @@ class LibretroFrontend {
                 data.pointee = RETRO_LANGUAGE_ENGLISH.rawValue
                 return true
             }
+        case RETRO_ENVIRONMENT_GET_VARIABLE.rawValue:
+            if let data = data?.assumingMemoryBound(to: retro_variable.self) {
+                if let key = data.pointee.key {
+                    let variableName = String(cString: key)
+                    print("Core requesting variable: \(variableName)")
+                    
+                    let defaultValue = "default_value"
+                    data.pointee.value = UnsafePointer(strdup(defaultValue))
+                    
+                    return true
+                } else {
+                    print("Core requested variable with null key")
+                    return false
+                }
+            }
         default:
+            print("Unhandled environment call: \(cmd)")
             return false
         }
         return false
@@ -87,23 +108,26 @@ class LibretroFrontend {
     // MARK: - Video Output
     
     private let videoRefreshCallback: @convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void = { (data, width, height, pitch) in
-        guard let data = data else { return }
+        guard let data = data else {
+            print("Received null video frame")
+            return
+        }
         let byteCount = Int(height) * Int(pitch)
         let videoData = Data(bytes: data, count: byteCount)
-        // Handle video data (e.g., render to screen or process)
-        print("Received video frame: \(width)x\(height), pitch: \(pitch)")
+        print("Received video frame: \(width)x\(height), pitch: \(pitch), size: \(byteCount) bytes")
     }
     
     // MARK: - Audio Output
     
     private let audioSampleCallback: @convention(c) (Int16, Int16) -> Void = { (left, right) in
-        // Handle single audio sample
         print("Received audio sample: L:\(left), R:\(right)")
     }
     
     private let audioSampleBatchCallback: @convention(c) (UnsafePointer<Int16>?, Int) -> Int = { (data, frames) in
-        guard let data = data else { return 0 }
-        // Handle batch of audio samples
+        guard let data = data else {
+            print("Received null audio batch")
+            return 0
+        }
         print("Received audio batch: \(frames) frames")
         return frames
     }
@@ -111,19 +135,18 @@ class LibretroFrontend {
     // MARK: - Input Handling
     
     private let inputPollCallback: @convention(c) () -> Void = {
-        // Poll for input here
         print("Input poll called")
     }
     
     private let inputStateCallback: @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16 = { (port, device, index, id) in
-        // Return input state
-        print("Input state requested for port: \(port), device: \(device), index: \(index), id: \(id)")
+//        print("Input state requested for port: \(port), device: \(device), index: \(index), id: \(id)")
         return 0
     }
     
     // MARK: - Core Loading and Running
     
     func setupCore(at path: String) throws {
+        log("Setting up core from path: \(path)")
         // Load the core dylib
         guard let handle = dlopen(path, RTLD_LAZY) else {
             throw LibretroError.failedToLoadCore(String(cString: dlerror()))
@@ -161,13 +184,14 @@ class LibretroFrontend {
         self.retro_run = retro_run
         self.retro_get_system_av_info = retro_get_system_av_info
 
-        print("Core set up and initialized from: \(path)")
+        log("Core set up and initialized from: \(path)")
     }
     
     func runCore() {
+        log("Starting core run loop")
         guard let retro_run = self.retro_run,
               let retro_get_system_av_info = self.retro_get_system_av_info else {
-            print("Core functions not set up properly")
+            log("Core functions not set up properly")
             return
         }
 
@@ -180,14 +204,29 @@ class LibretroFrontend {
         // Cast to raw pointer and call the function
         retro_get_system_av_info(&avInfo)
 
-        print("Game resolution: \(avInfo.geometry.base_width)x\(avInfo.geometry.base_height)")
-        print("FPS: \(avInfo.timing.fps)")
-
-        // Run loop
+        var frameCount = 0
         while true {
+            log("Running core frame \(frameCount)")
             retro_run()
-            // You might want to add a small delay here to avoid maxing out CPU
-            // usleep(1000) // 1ms delay
+            frameCount += 1
+            
+            // Add a small delay to prevent the loop from running too fast
+            usleep(16667) // Approximately 60 fps
+            
+            // For testing, you might want to break after a certain number of frames
+            if frameCount >= 60 {
+                log("Reached 60 frames, breaking loop for testing")
+                break
+            }
+        }
+        log("Core run loop ended")
+    }
+    
+    // MARK: - Utility
+    
+    private func log(_ message: String) {
+        if debug {
+            print("LibretroFrontend: \(message)")
         }
     }
 }
@@ -197,7 +236,9 @@ struct RETRO_ENVIRONMENT_GET_LOG_INTERFACE { static let rawValue: UInt32 = 27 }
 struct RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY { static let rawValue: UInt32 = 9 }
 struct RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY { static let rawValue: UInt32 = 31 }
 struct RETRO_ENVIRONMENT_GET_LANGUAGE { static let rawValue: UInt32 = 39 }
+struct RETRO_ENVIRONMENT_SET_LOGGING_INTERFACE { static let rawValue: UInt32 = 70 }
 struct RETRO_LANGUAGE_ENGLISH { static let rawValue: UInt32 = 0 }
+struct RETRO_ENVIRONMENT_GET_VARIABLE { static let rawValue: UInt32 = 15 }
 
 struct retro_log_callback {
     var log: (@convention(c) (UInt32, UnsafePointer<CChar>?, OpaquePointer) -> Void)?
@@ -219,4 +260,9 @@ struct retro_system_timing {
 struct retro_system_av_info {
     var geometry: retro_game_geometry
     var timing: retro_system_timing
+}
+
+struct retro_variable {
+    var key: UnsafePointer<CChar>?
+    var value: UnsafePointer<CChar>?
 }
