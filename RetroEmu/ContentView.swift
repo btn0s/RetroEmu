@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import QuartzCore
 
 enum EmulatorError: LocalizedError {
     case coreNotFound
@@ -26,6 +27,7 @@ class EmulatorManager: ObservableObject {
     @Published var logMessages: [String] = []
     private var frontend: LibretroFrontend?
     private let fileManager = FileManager.default
+    private var displayLink: CADisplayLink?
     
     init() {
         print("Initializing EmulatorManager")
@@ -188,21 +190,28 @@ class EmulatorManager: ObservableObject {
         }
         
         log("Starting core execution...")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            frontend.runCore()
-            DispatchQueue.main.async {
-                self?.isRunning = false
-                self?.log("Core execution finished")
-            }
-        }
         isRunning = true
+        
+        displayLink = CADisplayLink(target: self, selector: #selector(step))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+    
+    @objc private func step(displayLink: CADisplayLink) {
+        guard let frontend = frontend else {
+            stopEmulator()
+            return
+        }
+        
+        frontend.runCore()
     }
     
     func stopEmulator() {
-        print("Stopping emulator...")
+        log("Stopping emulator...")
+        displayLink?.invalidate()
+        displayLink = nil
         frontend = nil
         isRunning = false
-        print("Emulator stopped")
+        log("Emulator stopped")
     }
     
     func initializeEmulator() {

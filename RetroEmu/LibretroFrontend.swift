@@ -249,38 +249,12 @@ class LibretroFrontend {
     }
     
     func runCore() {
-        log("Starting core run loop")
-        guard let retro_run = self.retro_run,
-              let retro_get_system_av_info = self.retro_get_system_av_info else {
+        guard let retro_run = self.retro_run else {
             log("Core functions not set up properly")
             return
         }
 
-        // Prepare system AV info with raw pointer
-        var avInfo = retro_system_av_info(
-            geometry: retro_game_geometry(base_width: 1920, base_height: 1080, max_width: 1920, max_height: 1080, aspect_ratio: 16.9),
-            timing: retro_system_timing(fps: 60, sample_rate: 0)
-        )
-        
-        // Cast to raw pointer and call the function
-        retro_get_system_av_info(&avInfo)
-
-        var frameCount = 0
-        while true {
-            log("Running core frame \(frameCount)")
-            retro_run()
-            frameCount += 1
-            
-            // Add a small delay to prevent the loop from running too fast
-            usleep(16667) // Approximately 60 fps
-            
-            // For testing, you might want to break after a certain number of frames
-            if frameCount >= 60 {
-                log("Reached 60 frames, breaking loop for testing")
-                break
-            }
-        }
-        log("Core run loop ended")
+        retro_run()
     }
     
     // MARK: - Utility
