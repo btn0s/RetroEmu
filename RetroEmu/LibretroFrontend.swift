@@ -1,10 +1,24 @@
 import Foundation
 import AVFoundation
 
+// Global variable to hold our LibretroFrontend instance
+var globalLibretroFrontend: LibretroFrontend?
+
+@_cdecl("swiftEnvironCallback")
+public func swiftEnvironCallback(cmd: UInt32, data: UnsafeMutableRawPointer?) -> Bool {
+    return globalLibretroFrontend?.environCallback(cmd, data) ?? false
+}
+
 enum LibretroError: Error {
     case failedToLoadCore(String)
     case symbolNotFound(String)
     case initializationFailed
+}
+
+enum retro_pixel_format: UInt32 {
+    case RETRO_PIXEL_FORMAT_0RGB1555 = 0
+    case RETRO_PIXEL_FORMAT_XRGB8888 = 1
+    case RETRO_PIXEL_FORMAT_RGB565 = 2
 }
 
 class LibretroFrontend {
@@ -14,14 +28,23 @@ class LibretroFrontend {
     
     private var retro_run: (() -> Void)?
     private var retro_get_system_av_info: ((UnsafeMutableRawPointer) -> Void)?
+    private var retro_load_game: ((UnsafeMutableRawPointer) -> Bool)?
+    private var retro_init: (() -> Void)?
+    
+    private var currentPixelFormat: retro_pixel_format = .RETRO_PIXEL_FORMAT_0RGB1555
     
     private var debug = true
     
     // MARK: - Initialization
     
     init() {
+        globalLibretroFrontend = self
         setupDirectories()
         setupAudio()
+    }
+    
+    deinit {
+        globalLibretroFrontend = nil
     }
     
     // MARK: - Directory Setup
@@ -53,36 +76,39 @@ class LibretroFrontend {
     
     // MARK: - Libretro Environment Callbacks
     
-    private let environCallback: @convention(c) (UInt32, UnsafeMutableRawPointer?) -> Bool = { (cmd, data) in
+    func environCallback(_ cmd: UInt32, _ data: UnsafeMutableRawPointer?) -> Bool {
         switch cmd {
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE.rawValue:
             if let data = data?.assumingMemoryBound(to: retro_log_callback.self) {
                 data.pointee.log = { (level: UInt32, fmt: UnsafePointer<CChar>?, args: OpaquePointer) in
                     guard let fmt = fmt else { return }
-                    print("\(fmt)")
                     let message = String(cString: fmt)
                     let levelString = ["DEBUG", "INFO", "WARN", "ERROR"][Int(level)]
                     print("Libretro [\(levelString)]: \(message)")
                 }
                 return true
             }
+        
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY.rawValue:
             if let data = data?.assumingMemoryBound(to: UnsafePointer<CChar>?.self) {
                 let systemDir = (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first! as NSString).appendingPathComponent("system")
                 data.pointee = (systemDir as NSString).utf8String
                 return true
             }
+        
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY.rawValue:
             if let data = data?.assumingMemoryBound(to: UnsafePointer<CChar>?.self) {
                 let savesDir = (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first! as NSString).appendingPathComponent("saves")
                 data.pointee = (savesDir as NSString).utf8String
                 return true
             }
+        
         case RETRO_ENVIRONMENT_GET_LANGUAGE.rawValue:
             if let data = data?.assumingMemoryBound(to: UInt32.self) {
                 data.pointee = RETRO_LANGUAGE_ENGLISH.rawValue
                 return true
             }
+        
         case RETRO_ENVIRONMENT_GET_VARIABLE.rawValue:
             if let data = data?.assumingMemoryBound(to: retro_variable.self) {
                 if let key = data.pointee.key {
@@ -98,10 +124,25 @@ class LibretroFrontend {
                     return false
                 }
             }
+        
+        case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT.rawValue:
+            if let data = data?.assumingMemoryBound(to: retro_pixel_format.self) {
+                let format = data.pointee
+                if format == .RETRO_PIXEL_FORMAT_XRGB8888 {
+                    self.currentPixelFormat = format
+                    print("Pixel format set to XRGB8888")
+                    return true
+                } else {
+                    print("Unsupported pixel format requested: \(format)")
+                    return false
+                }
+            }
+        
         default:
             print("Unhandled environment call: \(cmd)")
             return false
         }
+        
         return false
     }
     
@@ -139,7 +180,6 @@ class LibretroFrontend {
     }
     
     private let inputStateCallback: @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16 = { (port, device, index, id) in
-//        print("Input state requested for port: \(port), device: \(device), index: \(index), id: \(id)")
         return 0
     }
     
@@ -162,13 +202,14 @@ class LibretroFrontend {
               let retro_set_audio_sample = dlsym(handle, "retro_set_audio_sample").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int16, Int16) -> Void) -> Void).self) }),
               let retro_set_audio_sample_batch = dlsym(handle, "retro_set_audio_sample_batch").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafePointer<Int16>?, Int) -> Int) -> Void).self) }),
               let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self) }),
-              let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16) -> Void).self) })
+              let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16) -> Void).self) }),
+              let retro_load_game = dlsym(handle, "retro_load_game").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeMutableRawPointer) -> Bool).self) })
         else {
             throw LibretroError.symbolNotFound("Core function")
         }
 
         // Set environment
-        retro_set_environment(environCallback)
+        retro_set_environment(swiftEnvironCallback)
 
         // Set other callbacks
         retro_set_video_refresh(videoRefreshCallback)
@@ -177,14 +218,35 @@ class LibretroFrontend {
         retro_set_input_poll(inputPollCallback)
         retro_set_input_state(inputStateCallback)
 
+        // Store function pointers
+        self.retro_init = retro_init
+        self.retro_run = retro_run
+        self.retro_get_system_av_info = retro_get_system_av_info
+        self.retro_load_game = retro_load_game
+
         // Initialize
         retro_init()
 
-        // Store function pointers
-        self.retro_run = retro_run
-        self.retro_get_system_av_info = retro_get_system_av_info
-
         log("Core set up and initialized from: \(path)")
+    }
+    
+    func loadGame(at path: String) -> Bool {
+        log("Loading game from path: \(path)")
+        guard let retro_load_game = self.retro_load_game else {
+            log("retro_load_game function not set up")
+            return false
+        }
+
+        var gameInfo = retro_game_info(
+            path: (path as NSString).utf8String,
+            data: nil,
+            size: 0,
+            meta: nil
+        )
+
+        let success = retro_load_game(&gameInfo)
+        log(success ? "Game loaded successfully" : "Failed to load game")
+        return success
     }
     
     func runCore() {
@@ -239,6 +301,7 @@ struct RETRO_ENVIRONMENT_GET_LANGUAGE { static let rawValue: UInt32 = 39 }
 struct RETRO_ENVIRONMENT_SET_LOGGING_INTERFACE { static let rawValue: UInt32 = 70 }
 struct RETRO_LANGUAGE_ENGLISH { static let rawValue: UInt32 = 0 }
 struct RETRO_ENVIRONMENT_GET_VARIABLE { static let rawValue: UInt32 = 15 }
+struct RETRO_ENVIRONMENT_SET_PIXEL_FORMAT { static let rawValue: UInt32 = 10 }
 
 struct retro_log_callback {
     var log: (@convention(c) (UInt32, UnsafePointer<CChar>?, OpaquePointer) -> Void)?
@@ -266,3 +329,33 @@ struct retro_variable {
     var key: UnsafePointer<CChar>?
     var value: UnsafePointer<CChar>?
 }
+
+struct retro_game_info {
+    var path: UnsafePointer<CChar>?
+    var data: UnsafeMutableRawPointer?
+    var size: Int
+    var meta: UnsafePointer<CChar>?
+}
+
+// Additional utility functions if needed
+
+extension LibretroFrontend {
+    // You can add extension methods here if you want to keep the main class definition cleaner
+    
+    func setVideoOutputHandler(_ handler: @escaping (Data, Int, Int) -> Void) {
+        self.videoOutputHandler = handler
+    }
+    
+    // Add more utility methods as needed
+}
+
+// Example usage:
+// let libretro = LibretroFrontend()
+// do {
+//     try libretro.setupCore(at: "/path/to/core.dylib")
+//     if libretro.loadGame(at: "/path/to/game.rom") {
+//         libretro.runCore()
+//     }
+// } catch {
+//     print("Error: \(error)")
+// }
