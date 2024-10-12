@@ -126,7 +126,12 @@ class EmulatorManager: ObservableObject {
             return
         }
         
-        let gamePath = "/gow.iso"
+        guard let gamePath = Bundle.main.path(forResource: "gow", ofType: "iso") else {
+            errorMessage = "Game file not found in app bundle"
+            log("Game file (gow.iso) not found in app bundle")
+            return
+        }
+        
         log("Attempting to load game from path: \(gamePath)")
         if frontend.loadGame(at: gamePath) {
             isGameLoaded = true

@@ -82,9 +82,8 @@ class LibretroFrontend {
             if let data = data?.assumingMemoryBound(to: retro_log_callback.self) {
                 data.pointee.log = { (level: UInt32, fmt: UnsafePointer<CChar>?, args: OpaquePointer) in
                     guard let fmt = fmt else { return }
-                    let message = String(cString: fmt)
                     let levelString = ["DEBUG", "INFO", "WARN", "ERROR"][Int(level)]
-                    print("Libretro [\(levelString)]: \(message)")
+                    print("Libretro [\(levelString)]")
                 }
                 return true
             }
