@@ -28,6 +28,7 @@ class EmulatorManager: ObservableObject {
     private var frontend: LibretroFrontend?
     private let fileManager = FileManager.default
     private var displayLink: CADisplayLink?
+    @Published var videoFrame: CGImage?
     
     init() {
         print("Initializing EmulatorManager")
@@ -192,6 +193,10 @@ class EmulatorManager: ObservableObject {
         log("Starting core execution...")
         isRunning = true
         
+        frontend.setVideoOutputHandler { [weak self] cgImage in
+            self?.videoFrame = cgImage
+        }
+        
         displayLink = CADisplayLink(target: self, selector: #selector(step))
         displayLink?.add(to: .main, forMode: .common)
     }
@@ -249,6 +254,7 @@ class EmulatorManager: ObservableObject {
 
 struct ContentView: View {
     @StateObject private var emulatorManager = EmulatorManager()
+    @State private var showEmulatorDisplay = false
     
     var body: some View {
         VStack {
@@ -281,6 +287,7 @@ struct ContentView: View {
                         emulatorManager.stopEmulator()
                     } else {
                         emulatorManager.runCore()
+                        showEmulatorDisplay = true
                     }
                 }
                 .padding()
@@ -309,5 +316,8 @@ struct ContentView: View {
             .cornerRadius(8)
         }
         .padding()
+        .fullScreenCover(isPresented: $showEmulatorDisplay) {
+            EmulatorDisplayView(videoFrame: $emulatorManager.videoFrame, isPresented: $showEmulatorDisplay)
+        }
     }
 }

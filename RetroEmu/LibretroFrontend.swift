@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import CoreGraphics
 
 // Global variable to hold our LibretroFrontend instance
 var globalLibretroFrontend: LibretroFrontend?
@@ -24,7 +25,10 @@ enum retro_pixel_format: UInt32 {
 class LibretroFrontend {
     private var coreHandle: UnsafeMutableRawPointer?
     private var audioEngine: AVAudioEngine?
-    private var videoOutputHandler: ((Data, Int, Int) -> Void)?
+    private var videoOutputHandler: ((CGImage) -> Void)?
+    private var currentWidth: Int = 0
+    private var currentHeight: Int = 0
+    private var currentPitch: Int = 0
     
     private var retro_run: (() -> Void)?
     private var retro_get_system_av_info: ((UnsafeMutableRawPointer) -> Void)?
@@ -152,9 +156,50 @@ class LibretroFrontend {
             print("Received null video frame")
             return
         }
+        
         let byteCount = Int(height) * Int(pitch)
         let videoData = Data(bytes: data, count: byteCount)
-        print("Received video frame: \(width)x\(height), pitch: \(pitch), size: \(byteCount) bytes")
+        
+        globalLibretroFrontend?.handleVideoFrame(videoData, width: Int(width), height: Int(height), pitch: Int(pitch))
+    }
+    
+    private func handleVideoFrame(_ videoData: Data, width: Int, height: Int, pitch: Int) {
+        currentWidth = width
+        currentHeight = height
+        currentPitch = pitch
+        
+        guard let cgImage = createCGImage(from: videoData, width: width, height: height, pitch: pitch) else {
+            print("Failed to create CGImage from video data")
+            return
+        }
+        
+        DispatchQueue.main.async { [weak self] in
+            self?.videoOutputHandler?(cgImage)
+        }
+    }
+    
+    private func createCGImage(from videoData: Data, width: Int, height: Int, pitch: Int) -> CGImage? {
+        let bitsPerComponent = 8
+        let bitsPerPixel = 32
+        let bytesPerRow = pitch
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        
+        guard let provider = CGDataProvider(data: videoData as CFData) else {
+            return nil
+        }
+        
+        return CGImage(width: width,
+                       height: height,
+                       bitsPerComponent: bitsPerComponent,
+                       bitsPerPixel: bitsPerPixel,
+                       bytesPerRow: bytesPerRow,
+                       space: colorSpace,
+                       bitmapInfo: bitmapInfo,
+                       provider: provider,
+                       decode: nil,
+                       shouldInterpolate: false,
+                       intent: .defaultIntent)
     }
     
     // MARK: - Audio Output
@@ -264,6 +309,10 @@ class LibretroFrontend {
             print("LibretroFrontend: \(message)")
         }
     }
+    
+    func setVideoOutputHandler(_ handler: @escaping (CGImage) -> Void) {
+        self.videoOutputHandler = handler
+    }
 }
 
 // Libretro types and constants
@@ -314,10 +363,6 @@ struct retro_game_info {
 
 extension LibretroFrontend {
     // You can add extension methods here if you want to keep the main class definition cleaner
-    
-    func setVideoOutputHandler(_ handler: @escaping (Data, Int, Int) -> Void) {
-        self.videoOutputHandler = handler
-    }
     
     // Add more utility methods as needed
 }
