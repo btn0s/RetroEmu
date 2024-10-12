@@ -39,6 +39,9 @@ class LibretroFrontend {
     
     private var debug = true
     
+    private var lastVideoData: Data?
+    private var lastCGImage: CGImage?
+    
     // MARK: - Initialization
     
     init() {
@@ -164,17 +167,15 @@ class LibretroFrontend {
     }
     
     private func handleVideoFrame(_ videoData: Data, width: Int, height: Int, pitch: Int) {
-        currentWidth = width
-        currentHeight = height
-        currentPitch = pitch
-        
-        guard let cgImage = createCGImage(from: videoData, width: width, height: height, pitch: pitch) else {
-            print("Failed to create CGImage from video data")
-            return
+        if videoData != lastVideoData {
+            lastVideoData = videoData
+            lastCGImage = createCGImage(from: videoData, width: width, height: height, pitch: pitch)
         }
         
-        DispatchQueue.main.async { [weak self] in
-            self?.videoOutputHandler?(cgImage)
+        if let cgImage = lastCGImage {
+            DispatchQueue.main.async { [weak self] in
+                self?.videoOutputHandler?(cgImage)
+            }
         }
     }
     

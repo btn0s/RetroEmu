@@ -3,7 +3,6 @@ import SwiftUI
 struct EmulatorDisplayView: View {
     @Binding var videoFrame: CGImage?
     @Binding var isPresented: Bool
-    @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
         GeometryReader { geometry in

@@ -194,20 +194,18 @@ class EmulatorManager: ObservableObject {
         isRunning = true
         
         frontend.setVideoOutputHandler { [weak self] cgImage in
-            self?.videoFrame = cgImage
+            DispatchQueue.main.async {
+                self?.videoFrame = cgImage
+            }
         }
         
         displayLink = CADisplayLink(target: self, selector: #selector(step))
+        displayLink?.preferredFramesPerSecond = 60 // You can adjust this value
         displayLink?.add(to: .main, forMode: .common)
     }
     
     @objc private func step(displayLink: CADisplayLink) {
-        guard let frontend = frontend else {
-            stopEmulator()
-            return
-        }
-        
-        frontend.runCore()
+        frontend?.runCore()
     }
     
     func stopEmulator() {
