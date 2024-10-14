@@ -42,6 +42,8 @@ class LibretroFrontend {
     private var lastVideoData: Data?
     private var lastCGImage: CGImage?
     
+    private var audioOutputHandler: ((UnsafePointer<Int16>, Int) -> Void)?
+    
     // MARK: - Initialization
     
     init() {
@@ -178,7 +180,7 @@ class LibretroFrontend {
             print("Received null audio batch")
             return 0
         }
-        print("Received audio batch: \(frames) frames")
+        globalLibretroFrontend?.handleAudioSamples(data, frames: frames)
         return frames
     }
     
@@ -277,6 +279,14 @@ class LibretroFrontend {
     
     func setVideoOutputHandler(_ handler: @escaping (UnsafeRawPointer, Int, Int, Int) -> Void) {
         self.videoOutputHandler = handler
+    }
+    
+    private func handleAudioSamples(_ samples: UnsafePointer<Int16>, frames: Int) {
+        audioOutputHandler?(samples, frames)
+    }
+    
+    func setAudioOutputHandler(_ handler: @escaping (UnsafePointer<Int16>, Int) -> Void) {
+        self.audioOutputHandler = handler
     }
 }
 

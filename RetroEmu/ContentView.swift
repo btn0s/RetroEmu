@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import QuartzCore
+import AVFoundation
 
 enum EmulatorError: LocalizedError {
     case coreNotFound
@@ -33,6 +34,9 @@ class EmulatorManager: ObservableObject {
     private var frontend: LibretroFrontend?
     private let fileManager = FileManager.default
     private var displayLink: CADisplayLink?
+    private var audioEngine: AVAudioEngine?
+    private var audioPlayerNode: AVAudioPlayerNode?
+    private var audioFormat: AVAudioFormat?
     
     init() {
         print("Initializing EmulatorManager")
@@ -143,6 +147,8 @@ class EmulatorManager: ObservableObject {
             log("Setting up core...")
             try frontend?.setupCore(at: corePath)
             
+            setupAudio()
+            
             isInitialized = true
             canInitialize = false
             canLoadGame = true
@@ -151,6 +157,29 @@ class EmulatorManager: ObservableObject {
         } catch {
             log("Error initializing emulator: \(error)")
             errorMessage = error.localizedDescription
+        }
+    }
+    
+    private func setupAudio() {
+        audioEngine = AVAudioEngine()
+        audioPlayerNode = AVAudioPlayerNode()
+        
+        guard let audioEngine = audioEngine,
+              let audioPlayerNode = audioPlayerNode else {
+            log("Failed to create audio engine or player node")
+            return
+        }
+        
+        audioFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)
+        
+        audioEngine.attach(audioPlayerNode)
+        audioEngine.connect(audioPlayerNode, to: audioEngine.mainMixerNode, format: audioFormat)
+        
+        do {
+            try audioEngine.start()
+            log("Audio engine started successfully")
+        } catch {
+            log("Failed to start audio engine: \(error)")
         }
     }
     
@@ -197,6 +226,10 @@ class EmulatorManager: ObservableObject {
             }
         }
         
+        frontend.setAudioOutputHandler { [weak self] buffer, frames in
+            self?.processAudio(buffer, frames: frames)
+        }
+        
         displayLink = CADisplayLink(target: self, selector: #selector(step))
         displayLink?.add(to: .main, forMode: .common)
     }
@@ -216,6 +249,13 @@ class EmulatorManager: ObservableObject {
         canInitialize = true
         canLoadGame = false
         canRun = false
+        
+        audioEngine?.stop()
+        audioPlayerNode?.stop()
+        audioEngine = nil
+        audioPlayerNode = nil
+        audioFormat = nil
+        
         log("Emulator stopped")
     }
     
@@ -239,6 +279,32 @@ class EmulatorManager: ObservableObject {
             return nil
         }
         return context.makeImage()
+    }
+    
+    private func processAudio(_ buffer: UnsafePointer<Int16>, frames: Int) {
+        guard let audioFormat = audioFormat else {
+            log("Audio format not set")
+            return
+        }
+        
+        let audioBuffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: UInt32(frames))
+        audioBuffer?.frameLength = UInt32(frames)
+        
+        let channels = UInt32(audioFormat.channelCount)
+        
+        for channel in 0..<channels {
+            let channelData = audioBuffer?.floatChannelData?[Int(channel)]
+            let stride = Int(channels)
+            
+            for frame in 0..<frames {
+                let sampleOffset = frame * stride + Int(channel)
+                let sample = Float(buffer[sampleOffset]) / Float(Int16.max)
+                channelData?[frame] = sample
+            }
+        }
+        
+        audioPlayerNode?.scheduleBuffer(audioBuffer!)
+        audioPlayerNode?.play()
     }
 }
 
