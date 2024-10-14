@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import CoreGraphics
+import GameController
 
 // Global variable to hold our LibretroFrontend instance
 var globalLibretroFrontend: LibretroFrontend?
@@ -43,6 +44,8 @@ class LibretroFrontend {
     private var lastCGImage: CGImage?
     
     private var audioOutputHandler: ((UnsafePointer<Int16>, Int) -> Void)?
+    
+    private var inputState: [UInt32: [UInt32: Bool]] = [:]
     
     // MARK: - Initialization
     
@@ -191,7 +194,18 @@ class LibretroFrontend {
     }
     
     private let inputStateCallback: @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16 = { (port, device, index, id) in
-        return 0
+        return globalLibretroFrontend?.handleInputState(port: port, device: device, index: index, id: id) ?? 0
+    }
+    
+    private func handleInputState(port: UInt32, device: UInt32, index: UInt32, id: UInt32) -> Int16 {
+        return inputState[port]?[id] == true ? 1 : 0
+    }
+    
+    func updateInputState(port: UInt32, buttonId: UInt32, isPressed: Bool) {
+        if inputState[port] == nil {
+            inputState[port] = [:]
+        }
+        inputState[port]?[buttonId] = isPressed
     }
     
     // MARK: - Core Loading and Running
@@ -340,6 +354,26 @@ extension LibretroFrontend {
     // You can add extension methods here if you want to keep the main class definition cleaner
     
     // Add more utility methods as needed
+}
+
+// Add these constants for button mappings
+struct RETRO_DEVICE_ID_JOYPAD {
+    static let B: UInt32 = 0
+    static let Y: UInt32 = 1
+    static let SELECT: UInt32 = 2
+    static let START: UInt32 = 3
+    static let UP: UInt32 = 4
+    static let DOWN: UInt32 = 5
+    static let LEFT: UInt32 = 6
+    static let RIGHT: UInt32 = 7
+    static let A: UInt32 = 8
+    static let X: UInt32 = 9
+    static let L: UInt32 = 10
+    static let R: UInt32 = 11
+    static let L2: UInt32 = 12
+    static let R2: UInt32 = 13
+    static let L3: UInt32 = 14
+    static let R3: UInt32 = 15
 }
 
 // Example usage:

@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import QuartzCore
 import AVFoundation
+import GameController
 
 enum EmulatorError: LocalizedError {
     case coreNotFound
@@ -37,6 +38,7 @@ class EmulatorManager: ObservableObject {
     private var audioEngine: AVAudioEngine?
     private var audioPlayerNode: AVAudioPlayerNode?
     private var audioFormat: AVAudioFormat?
+    private var gamepads: [GCController] = []
     
     init() {
         print("Initializing EmulatorManager")
@@ -149,6 +151,8 @@ class EmulatorManager: ObservableObject {
             
             setupAudio()
             
+            setupGamepadHandling()
+            
             isInitialized = true
             canInitialize = false
             canLoadGame = true
@@ -180,6 +184,54 @@ class EmulatorManager: ObservableObject {
             log("Audio engine started successfully")
         } catch {
             log("Failed to start audio engine: \(error)")
+        }
+    }
+    
+    private func setupGamepadHandling() {
+        NotificationCenter.default.addObserver(self, selector: #selector(handleControllerConnected), name: .GCControllerDidConnect, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleControllerDisconnected), name: .GCControllerDidDisconnect, object: nil)
+        
+        gamepads = GCController.controllers()
+        for gamepad in gamepads {
+            configureGamepadHandlers(gamepad)
+        }
+    }
+    
+    @objc private func handleControllerConnected(_ notification: Notification) {
+        guard let gamepad = notification.object as? GCController else { return }
+        gamepads.append(gamepad)
+        configureGamepadHandlers(gamepad)
+    }
+    
+    @objc private func handleControllerDisconnected(_ notification: Notification) {
+        guard let gamepad = notification.object as? GCController else { return }
+        gamepads.removeAll { $0 == gamepad }
+    }
+    
+    private func configureGamepadHandlers(_ gamepad: GCController) {
+        gamepad.extendedGamepad?.valueChangedHandler = { [weak self] (gamepad, element) in
+            self?.handleGamepadInput(gamepad: gamepad)
+        }
+    }
+    
+    private func handleGamepadInput(gamepad: GCExtendedGamepad) {
+        let buttonMappings: [(GCControllerButtonInput, UInt32)] = [
+            (gamepad.buttonA, RETRO_DEVICE_ID_JOYPAD.A),
+            (gamepad.buttonB, RETRO_DEVICE_ID_JOYPAD.B),
+            (gamepad.buttonX, RETRO_DEVICE_ID_JOYPAD.X),
+            (gamepad.buttonY, RETRO_DEVICE_ID_JOYPAD.Y),
+            (gamepad.leftShoulder, RETRO_DEVICE_ID_JOYPAD.L),
+            (gamepad.rightShoulder, RETRO_DEVICE_ID_JOYPAD.R),
+            (gamepad.leftTrigger, RETRO_DEVICE_ID_JOYPAD.L2),
+            (gamepad.rightTrigger, RETRO_DEVICE_ID_JOYPAD.R2),
+            (gamepad.dpad.up, RETRO_DEVICE_ID_JOYPAD.UP),
+            (gamepad.dpad.down, RETRO_DEVICE_ID_JOYPAD.DOWN),
+            (gamepad.dpad.left, RETRO_DEVICE_ID_JOYPAD.LEFT),
+            (gamepad.dpad.right, RETRO_DEVICE_ID_JOYPAD.RIGHT)
+        ]
+        
+        for (button, retroButton) in buttonMappings {
+            frontend?.updateInputState(port: 0, buttonId: retroButton, isPressed: button.isPressed)
         }
     }
     
