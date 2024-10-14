@@ -25,7 +25,7 @@ enum retro_pixel_format: UInt32 {
 class LibretroFrontend {
     private var coreHandle: UnsafeMutableRawPointer?
     private var audioEngine: AVAudioEngine?
-    private var videoOutputHandler: ((CGImage) -> Void)?
+    private var videoOutputHandler: ((UnsafeRawPointer, Int, Int, Int) -> Void)?
     private var currentWidth: Int = 0
     private var currentHeight: Int = 0
     private var currentPitch: Int = 0
@@ -160,47 +160,11 @@ class LibretroFrontend {
             return
         }
         
-        let byteCount = Int(height) * Int(pitch)
-        let videoData = Data(bytes: data, count: byteCount)
-        
-        globalLibretroFrontend?.handleVideoFrame(videoData, width: Int(width), height: Int(height), pitch: Int(pitch))
+        globalLibretroFrontend?.handleVideoFrame(data, width: Int(width), height: Int(height), pitch: Int(pitch))
     }
     
-    private func handleVideoFrame(_ videoData: Data, width: Int, height: Int, pitch: Int) {
-        if videoData != lastVideoData {
-            lastVideoData = videoData
-            lastCGImage = createCGImage(from: videoData, width: width, height: height, pitch: pitch)
-        }
-        
-        if let cgImage = lastCGImage {
-            DispatchQueue.main.async { [weak self] in
-                self?.videoOutputHandler?(cgImage)
-            }
-        }
-    }
-    
-    private func createCGImage(from videoData: Data, width: Int, height: Int, pitch: Int) -> CGImage? {
-        let bitsPerComponent = 8
-        let bitsPerPixel = 32
-        let bytesPerRow = pitch
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-        
-        guard let provider = CGDataProvider(data: videoData as CFData) else {
-            return nil
-        }
-        
-        return CGImage(width: width,
-                       height: height,
-                       bitsPerComponent: bitsPerComponent,
-                       bitsPerPixel: bitsPerPixel,
-                       bytesPerRow: bytesPerRow,
-                       space: colorSpace,
-                       bitmapInfo: bitmapInfo,
-                       provider: provider,
-                       decode: nil,
-                       shouldInterpolate: false,
-                       intent: .defaultIntent)
+    private func handleVideoFrame(_ videoData: UnsafeRawPointer, width: Int, height: Int, pitch: Int) {
+        videoOutputHandler?(videoData, width, height, pitch)
     }
     
     // MARK: - Audio Output
@@ -311,7 +275,7 @@ class LibretroFrontend {
         }
     }
     
-    func setVideoOutputHandler(_ handler: @escaping (CGImage) -> Void) {
+    func setVideoOutputHandler(_ handler: @escaping (UnsafeRawPointer, Int, Int, Int) -> Void) {
         self.videoOutputHandler = handler
     }
 }

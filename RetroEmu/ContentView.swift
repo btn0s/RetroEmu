@@ -25,10 +25,14 @@ class EmulatorManager: ObservableObject {
     @Published var errorMessage: String?
     @Published var isGameLoaded = false
     @Published var logMessages: [String] = []
+    @Published var videoFrame: CGImage?
+    @Published var canInitialize = true
+    @Published var canLoadGame = false
+    @Published var canRun = false
+    
     private var frontend: LibretroFrontend?
     private let fileManager = FileManager.default
     private var displayLink: CADisplayLink?
-    @Published var videoFrame: CGImage?
     
     init() {
         print("Initializing EmulatorManager")
@@ -123,100 +127,6 @@ class EmulatorManager: ObservableObject {
         }
     }
     
-    func loadGame() {
-        guard let frontend = frontend else {
-            errorMessage = "Emulator not initialized"
-            return
-        }
-        
-        guard let gamePath = Bundle.main.path(forResource: "gow", ofType: "iso") else {
-            errorMessage = "Game file not found in app bundle"
-            log("Game file (gow.iso) not found in app bundle")
-            return
-        }
-        
-        log("Attempting to load game from path: \(gamePath)")
-        if frontend.loadGame(at: gamePath) {
-            isGameLoaded = true
-            errorMessage = nil
-            log("Game loaded successfully")
-        } else {
-            isGameLoaded = false
-            errorMessage = EmulatorError.gameLoadFailed.localizedDescription
-            log("Failed to load game")
-        }
-    }
-    
-    func startEmulator() {
-        print("Starting emulator...")
-        DispatchQueue.main.async { [weak self] in
-            self?.initializeAndRunEmulator()
-        }
-    }
-    
-    private func initializeAndRunEmulator() {
-        print("Initializing and running emulator...")
-        frontend = LibretroFrontend()
-        
-        do {
-            print("Searching for ppsspp_libretro.dylib core...")
-            guard let corePath = Bundle.main.path(forResource: "ppsspp_libretro", ofType: "dylib", inDirectory: "Frameworks") else {
-                print("Core not found in Frameworks directory")
-                printBundleContents()
-                throw EmulatorError.coreNotFound
-            }
-            print("Core found at: \(corePath)")
-
-            print("Setting up core...")
-            try frontend?.setupCore(at: corePath)
-
-            print("Running core...")
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                self?.frontend?.runCore()
-            }
-            
-            isRunning = true
-            errorMessage = nil
-            print("Emulator started successfully")
-        } catch {
-            print("Error starting emulator: \(error)")
-            errorMessage = error.localizedDescription
-        }
-    }
-    
-    func runCore() {
-        guard let frontend = frontend, isGameLoaded else {
-            errorMessage = "Game not loaded or emulator not initialized"
-            return
-        }
-        
-        log("Starting core execution...")
-        isRunning = true
-        
-        frontend.setVideoOutputHandler { [weak self] cgImage in
-            DispatchQueue.main.async {
-                self?.videoFrame = cgImage
-            }
-        }
-        
-        displayLink = CADisplayLink(target: self, selector: #selector(step))
-        displayLink?.preferredFramesPerSecond = 60 // You can adjust this value
-        displayLink?.add(to: .main, forMode: .common)
-    }
-    
-    @objc private func step(displayLink: CADisplayLink) {
-        frontend?.runCore()
-    }
-    
-    func stopEmulator() {
-        log("Stopping emulator...")
-        displayLink?.invalidate()
-        displayLink = nil
-        frontend = nil
-        isRunning = false
-        log("Emulator stopped")
-    }
-    
     func initializeEmulator() {
         log("Initializing emulator...")
         frontend = LibretroFrontend()
@@ -234,6 +144,8 @@ class EmulatorManager: ObservableObject {
             try frontend?.setupCore(at: corePath)
             
             isInitialized = true
+            canInitialize = false
+            canLoadGame = true
             errorMessage = nil
             log("Emulator initialized successfully")
         } catch {
@@ -242,80 +154,165 @@ class EmulatorManager: ObservableObject {
         }
     }
     
+    func loadGame() {
+        guard let frontend = frontend else {
+            errorMessage = "Emulator not initialized"
+            return
+        }
+        
+        guard let gamePath = Bundle.main.path(forResource: "gow", ofType: "iso") else {
+            errorMessage = "Game file not found in app bundle"
+            log("Game file (gow.iso) not found in app bundle")
+            return
+        }
+        
+        log("Attempting to load game from path: \(gamePath)")
+        if frontend.loadGame(at: gamePath) {
+            isGameLoaded = true
+            canLoadGame = false
+            canRun = true
+            errorMessage = nil
+            log("Game loaded successfully")
+        } else {
+            isGameLoaded = false
+            errorMessage = EmulatorError.gameLoadFailed.localizedDescription
+            log("Failed to load game")
+        }
+    }
+    
+    func runCore() {
+        guard let frontend = frontend, isGameLoaded else {
+            errorMessage = "Game not loaded or emulator not initialized"
+            return
+        }
+        
+        log("Starting core execution...")
+        isRunning = true
+        
+        frontend.setVideoOutputHandler { [weak self] buffer, width, height, pitch in
+            if let cgImage = self?.createCGImage(from: buffer, width: width, height: height, pitch: pitch) {
+                DispatchQueue.main.async {
+                    self?.videoFrame = cgImage
+                }
+            }
+        }
+        
+        displayLink = CADisplayLink(target: self, selector: #selector(step))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+    
+    @objc private func step(displayLink: CADisplayLink) {
+        frontend?.runCore()
+    }
+    
+    func stopEmulator() {
+        log("Stopping emulator...")
+        displayLink?.invalidate()
+        displayLink = nil
+        frontend = nil
+        isRunning = false
+        isGameLoaded = false
+        isInitialized = false
+        canInitialize = true
+        canLoadGame = false
+        canRun = false
+        log("Emulator stopped")
+    }
+    
     private func log(_ message: String) {
         print(message)
         DispatchQueue.main.async {
             self.logMessages.append(message)
         }
     }
+    
+    private func createCGImage(from buffer: UnsafeRawPointer, width: Int, height: Int, pitch: Int) -> CGImage? {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let context = CGContext(data: UnsafeMutableRawPointer(mutating: buffer),
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: pitch,
+                                      space: colorSpace,
+                                      bitmapInfo: bitmapInfo.rawValue) else {
+            return nil
+        }
+        return context.makeImage()
+    }
 }
 
 struct ContentView: View {
     @StateObject private var emulatorManager = EmulatorManager()
-    @State private var showEmulatorDisplay = false
     
     var body: some View {
-        VStack {
-            Text(emulatorManager.isInitialized ? "Emulator is initialized" : "Emulator is not initialized")
-                .font(.headline)
-            
-            Button("Initialize Emulator") {
-                emulatorManager.initializeEmulator()
-            }
-            .padding()
-            .background(Color.blue)
-            .foregroundColor(.white)
-            .cornerRadius(12)
-            .disabled(emulatorManager.isInitialized)
-            
-            if emulatorManager.isInitialized {
-                Button("Load Game") {
-                    emulatorManager.loadGame()
-                }
-                .padding()
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-                .disabled(emulatorManager.isGameLoaded)
+        ZStack {
+            if let videoFrame = emulatorManager.videoFrame {
+                Image(uiImage: UIImage(cgImage: videoFrame))
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .edgesIgnoringSafeArea(.all)
+            } else {
+                Color.black.edgesIgnoringSafeArea(.all)
             }
             
-            if emulatorManager.isGameLoaded {
-                Button(emulatorManager.isRunning ? "Stop Emulator" : "Run Game") {
-                    if emulatorManager.isRunning {
-                        emulatorManager.stopEmulator()
-                    } else {
-                        emulatorManager.runCore()
-                        showEmulatorDisplay = true
+            VStack {
+                Spacer()
+                
+                HStack {
+                    Button(action: {
+                        emulatorManager.initializeEmulator()
+                    }) {
+                        Text("Initialize")
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
                     }
+                    .disabled(!emulatorManager.canInitialize)
+                    
+                    Button(action: {
+                        emulatorManager.loadGame()
+                    }) {
+                        Text("Load Game")
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    .disabled(!emulatorManager.canLoadGame)
+                    
+                    Button(action: {
+                        if emulatorManager.isRunning {
+                            emulatorManager.stopEmulator()
+                        } else {
+                            emulatorManager.runCore()
+                        }
+                    }) {
+                        Text(emulatorManager.isRunning ? "Stop" : "Run")
+                            .padding()
+                            .background(emulatorManager.isRunning ? Color.red : Color.orange)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    .disabled(!emulatorManager.canRun)
                 }
-                .padding()
-                .background(emulatorManager.isRunning ? Color.red : Color.orange)
-                .foregroundColor(.white)
-                .cornerRadius(12)
+                .padding(.bottom, 20)
             }
             
             if let errorMessage = emulatorManager.errorMessage {
-                Text("Error: \(errorMessage)")
+                Text(errorMessage)
                     .foregroundColor(.red)
                     .padding()
             }
-            
-            ScrollView {
-                LazyVStack(alignment: .leading) {
-                    ForEach(emulatorManager.logMessages, id: \.self) { message in
-                        Text(message)
-                            .font(.system(size: 12, design: .monospaced))
-                    }
-                }
-            }
-            .frame(maxHeight: 200)
-            .padding()
-            .background(Color.black.opacity(0.1))
-            .cornerRadius(8)
-        }
-        .padding()
-        .fullScreenCover(isPresented: $showEmulatorDisplay) {
-            EmulatorDisplayView(videoFrame: $emulatorManager.videoFrame, isPresented: $showEmulatorDisplay)
         }
     }
 }
+
+#if DEBUG
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
+}
+#endif
