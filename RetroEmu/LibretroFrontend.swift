@@ -246,6 +246,11 @@ class LibretroFrontend: ObservableObject {
                 if let key = data.pointee.key {
                     let variableName = String(cString: key)
                     print("Core requesting variable: \(variableName)")
+
+                    if (variableName == "ppsspp_auto_frameskip") {
+                        data.pointee.value = UnsafePointer(strdup("true"))
+                        return true
+                    }
                     
                     let defaultValue = "default_value"
                     data.pointee.value = UnsafePointer(strdup(defaultValue))
