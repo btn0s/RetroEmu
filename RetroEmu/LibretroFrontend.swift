@@ -28,6 +28,7 @@ class LibretroFrontend: ObservableObject {
     @Published var canInitialize = true
     @Published var canLoadGame = false
     @Published var canRun = false
+    @Published var isLaunched = false
 
     private let dylibPath: String
     private let isoPath: String
@@ -61,54 +62,36 @@ class LibretroFrontend: ObservableObject {
         globalLibretroFrontend = nil
     }
 
-    func initializeEmulator() {
-        log("Initializing emulator...")
+    func launch() throws {
+        log("Launching emulator...")
+        
+        guard !isLaunched else {
+            log("Emulator is already launched")
+            return
+        }
+        
         do {
             try setupCore()
             isInitialized = true
-            canInitialize = false
-            canLoadGame = true
-            errorMessage = nil
-            log("Emulator initialized successfully")
+            log("Core initialized successfully")
+            
+            if loadGame(at: isoPath) {
+                isGameLoaded = true
+                log("Game loaded successfully")
+                
+                startEmulatorLoop()
+                isLaunched = true
+                log("Emulator launched successfully")
+            } else {
+                throw LibretroError.gameLoadFailed
+            }
         } catch {
-            log("Error initializing emulator: \(error)")
+            log("Error launching emulator: \(error)")
             errorMessage = error.localizedDescription
+            throw error
         }
     }
-
-    func loadGame() {
-        guard isInitialized else {
-            errorMessage = "Emulator not initialized"
-            return
-        }
-
-        log("Attempting to load game from path: \(isoPath)")
-        if loadGame(at: isoPath) {
-            isGameLoaded = true
-            canLoadGame = false
-            canRun = true
-            errorMessage = nil
-            log("Game loaded successfully")
-        } else {
-            isGameLoaded = false
-            errorMessage = "Failed to load game"
-            log("Failed to load game")
-        }
-    }
-
-    func runCore() {
-        guard isGameLoaded else {
-            errorMessage = "Game not loaded or emulator not initialized"
-            return
-        }
-
-        log("Starting core execution...")
-        isRunning = true
-
-        displayLink = CADisplayLink(target: self, selector: #selector(step))
-        displayLink?.add(to: .main, forMode: .common)
-    }
-
+    
     func stopEmulation() {
         log("Stopping emulator...")
         displayLink?.invalidate()
@@ -119,9 +102,7 @@ class LibretroFrontend: ObservableObject {
         isRunning = false
         isGameLoaded = false
         isInitialized = false
-        canInitialize = true
-        canLoadGame = false
-        canRun = false
+        isLaunched = false
 
         audioEngine?.stop()
         audioPlayerNode?.stop()
@@ -211,6 +192,14 @@ class LibretroFrontend: ObservableObject {
         )
 
         return retro_load_game(&gameInfo)
+    }
+    
+    private func startEmulatorLoop() {
+        log("Starting emulator loop...")
+        isRunning = true
+
+        displayLink = CADisplayLink(target: self, selector: #selector(step))
+        displayLink?.add(to: .main, forMode: .common)
     }
     
     @objc private func step(displayLink: CADisplayLink) {

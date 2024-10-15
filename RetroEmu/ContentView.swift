@@ -1,6 +1,5 @@
 import SwiftUI
 import CoreGraphics
-import UIKit
 
 struct ContentView: View {
     @StateObject private var libretroFrontend: LibretroFrontend
@@ -25,44 +24,25 @@ struct ContentView: View {
             VStack {
                 Spacer()
                 
-                HStack {
-                    Button(action: {
-                        libretroFrontend.initializeEmulator()
-                    }) {
-                        Text("Initialize")
-                            .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                    }
-                    .disabled(!libretroFrontend.canInitialize)
-                    
-                    Button(action: {
-                        libretroFrontend.loadGame()
-                    }) {
-                        Text("Load Game")
-                            .padding()
-                            .background(Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
-                    }
-                    .disabled(!libretroFrontend.canLoadGame)
-                    
-                    Button(action: {
-                        if libretroFrontend.isRunning {
+                Button(action: {
+                    do {
+                        if libretroFrontend.isLaunched {
                             libretroFrontend.stopEmulation()
                         } else {
-                            libretroFrontend.runCore()
+                            try libretroFrontend.launch()
                         }
-                    }) {
-                        Text(libretroFrontend.isRunning ? "Stop" : "Run")
-                            .padding()
-                            .background(libretroFrontend.isRunning ? Color.red : Color.orange)
-                            .foregroundColor(.white)
-                            .cornerRadius(10)
+                    } catch {
+                        print("Error launching emulator: \(error)")
                     }
-                    .disabled(!libretroFrontend.canRun)
+                }) {
+                    Text(libretroFrontend.isLaunched ? "Stop" : "Launch")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(libretroFrontend.isLaunched ? Color.red : Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
                 }
+                .padding(.horizontal, 20)
                 .padding(.bottom, 20)
             }
             
