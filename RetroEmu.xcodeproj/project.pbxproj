@@ -48,9 +48,11 @@
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			attributesByRelativePath = {
 				ppsspp_libretro.dylib = (CodeSignOnCopy, );
+				ppsspp_libretro_debug.dylib = (CodeSignOnCopy, );
 			};
 			buildPhase = 7B49F9192CB46E3E0001979B /* Embed Libraries */;
 			membershipExceptions = (
+				ppsspp_libretro_debug.dylib,
 				ppsspp_libretro.dylib,
 			);
 		};

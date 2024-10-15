@@ -47,6 +47,7 @@ class LibretroFrontend: ObservableObject {
 
     private var currentPixelFormat: retro_pixel_format = .RETRO_PIXEL_FORMAT_0RGB1555
     private var inputState: [UInt32: [UInt32: Bool]] = [:]
+    private var currentFramebuffer: retro_framebuffer?
 
     init(dylibPath: String, isoPath: String) {
         self.dylibPath = dylibPath
@@ -269,6 +270,11 @@ class LibretroFrontend: ObservableObject {
                 }
             }
         
+        case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER.rawValue:
+            if let data = data?.assumingMemoryBound(to: retro_framebuffer.self) {
+                return getCurrentSoftwareFramebuffer(data)
+            }
+        
         default:
             print("Unhandled environment call: \(cmd)")
             return false
@@ -277,9 +283,41 @@ class LibretroFrontend: ObservableObject {
         return false
     }
     
+    private func getCurrentSoftwareFramebuffer(_ framebuffer: UnsafeMutablePointer<retro_framebuffer>) -> Bool {
+        let width = 640 // Replace with actual width
+        let height = 480 // Replace with actual height
+        let pitch = width * 4 // Assuming 32-bit color (XRGB8888)
+
+        if currentFramebuffer == nil {
+            currentFramebuffer = retro_framebuffer(
+                data: UnsafeMutableRawPointer.allocate(byteCount: height * pitch, alignment: 32),
+                width: UInt32(width),
+                height: UInt32(height),
+                pitch: Int(pitch),
+                format: UInt32(RETRO_PIXEL_FORMAT_XRGB8888.rawValue),
+                access_flags: 0,
+                memory_flags: 0
+            )
+        }
+
+        if let current = currentFramebuffer {
+            framebuffer.pointee = current
+            return true
+        }
+
+        return false
+    }
+    
     private let videoRefreshCallback: @convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void = { (data, width, height, pitch) in
-        guard let data = data else { return }
-        globalLibretroFrontend?.handleVideoFrame(data, width: Int(width), height: Int(height), pitch: Int(pitch))
+        guard let frontend = globalLibretroFrontend else { return }
+
+        if let framebuffer = frontend.currentFramebuffer, let data = data {
+            // The core has rendered directly into our framebuffer
+            frontend.handleVideoFrame(framebuffer.data!, width: Int(framebuffer.width), height: Int(framebuffer.height), pitch: framebuffer.pitch)
+        } else if let data = data {
+            // Fallback to the original method if direct rendering wasn't used
+            frontend.handleVideoFrame(data, width: Int(width), height: Int(height), pitch: pitch)
+        }
     }
     
     private func handleVideoFrame(_ videoData: UnsafeRawPointer, width: Int, height: Int, pitch: Int) {
@@ -399,6 +437,7 @@ struct RETRO_ENVIRONMENT_SET_LOGGING_INTERFACE { static let rawValue: UInt32 = 7
 struct RETRO_LANGUAGE_ENGLISH { static let rawValue: UInt32 = 0 }
 struct RETRO_ENVIRONMENT_GET_VARIABLE { static let rawValue: UInt32 = 15 }
 struct RETRO_ENVIRONMENT_SET_PIXEL_FORMAT { static let rawValue: UInt32 = 10 }
+struct RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER { static let rawValue: UInt32 = 40 | 0x10000 }
 
 struct retro_log_callback {
     var log: (@convention(c) (UInt32, UnsafePointer<CChar>?, OpaquePointer) -> Void)?
@@ -438,6 +477,16 @@ enum retro_pixel_format: UInt32 {
     case RETRO_PIXEL_FORMAT_0RGB1555 = 0
     case RETRO_PIXEL_FORMAT_XRGB8888 = 1
     case RETRO_PIXEL_FORMAT_RGB565 = 2
+}
+
+struct retro_framebuffer {
+    var data: UnsafeMutableRawPointer?
+    var width: UInt32
+    var height: UInt32
+    var pitch: Int
+    var format: UInt32
+    var access_flags: UInt32
+    var memory_flags: UInt32
 }
 
 // Additional utility functions if needed
