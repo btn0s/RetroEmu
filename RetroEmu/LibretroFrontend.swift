@@ -15,51 +15,124 @@ enum LibretroError: Error {
     case failedToLoadCore(String)
     case symbolNotFound(String)
     case initializationFailed
+    case gameLoadFailed
 }
 
-enum retro_pixel_format: UInt32 {
-    case RETRO_PIXEL_FORMAT_0RGB1555 = 0
-    case RETRO_PIXEL_FORMAT_XRGB8888 = 1
-    case RETRO_PIXEL_FORMAT_RGB565 = 2
-}
+class LibretroFrontend: ObservableObject {
+    @Published var isInitialized = false
+    @Published var isRunning = false
+    @Published var errorMessage: String?
+    @Published var isGameLoaded = false
+    @Published var logMessages: [String] = []
+    @Published var videoFrame: CGImage?
+    @Published var canInitialize = true
+    @Published var canLoadGame = false
+    @Published var canRun = false
 
-class LibretroFrontend {
+    private let dylibPath: String
+    private let isoPath: String
     private var coreHandle: UnsafeMutableRawPointer?
     private var audioEngine: AVAudioEngine?
-    private var videoOutputHandler: ((UnsafeRawPointer, Int, Int, Int) -> Void)?
-    private var currentWidth: Int = 0
-    private var currentHeight: Int = 0
-    private var currentPitch: Int = 0
-    
+    private var audioPlayerNode: AVAudioPlayerNode?
+    private var audioFormat: AVAudioFormat?
+    private var gamepads: [GCController] = []
+    private var displayLink: CADisplayLink?
+
     private var retro_run: (() -> Void)?
     private var retro_get_system_av_info: ((UnsafeMutableRawPointer) -> Void)?
-    private var retro_load_game: ((UnsafeMutableRawPointer) -> Bool)?
+    private var retro_load_game: ((UnsafeRawPointer) -> Bool)?
     private var retro_init: (() -> Void)?
-    
+    private var retro_deinit: (() -> Void)?
+
     private var currentPixelFormat: retro_pixel_format = .RETRO_PIXEL_FORMAT_0RGB1555
-    
-    private var debug = true
-    
-    private var lastVideoData: Data?
-    private var lastCGImage: CGImage?
-    
-    private var audioOutputHandler: ((UnsafePointer<Int16>, Int) -> Void)?
-    
     private var inputState: [UInt32: [UInt32: Bool]] = [:]
-    
-    // MARK: - Initialization
-    
-    init() {
+
+    init(dylibPath: String, isoPath: String) {
+        self.dylibPath = dylibPath
+        self.isoPath = isoPath
         globalLibretroFrontend = self
         setupDirectories()
         setupAudio()
+        setupGamepadHandling()
     }
-    
+
     deinit {
+        stopEmulation()
         globalLibretroFrontend = nil
     }
-    
-    // MARK: - Directory Setup
+
+    func initializeEmulator() {
+        log("Initializing emulator...")
+        do {
+            try setupCore()
+            isInitialized = true
+            canInitialize = false
+            canLoadGame = true
+            errorMessage = nil
+            log("Emulator initialized successfully")
+        } catch {
+            log("Error initializing emulator: \(error)")
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadGame() {
+        guard isInitialized else {
+            errorMessage = "Emulator not initialized"
+            return
+        }
+
+        log("Attempting to load game from path: \(isoPath)")
+        if loadGame(at: isoPath) {
+            isGameLoaded = true
+            canLoadGame = false
+            canRun = true
+            errorMessage = nil
+            log("Game loaded successfully")
+        } else {
+            isGameLoaded = false
+            errorMessage = "Failed to load game"
+            log("Failed to load game")
+        }
+    }
+
+    func runCore() {
+        guard isGameLoaded else {
+            errorMessage = "Game not loaded or emulator not initialized"
+            return
+        }
+
+        log("Starting core execution...")
+        isRunning = true
+
+        displayLink = CADisplayLink(target: self, selector: #selector(step))
+        displayLink?.add(to: .main, forMode: .common)
+    }
+
+    func stopEmulation() {
+        log("Stopping emulator...")
+        displayLink?.invalidate()
+        displayLink = nil
+        retro_deinit?()
+        dlclose(coreHandle)
+        coreHandle = nil
+        isRunning = false
+        isGameLoaded = false
+        isInitialized = false
+        canInitialize = true
+        canLoadGame = false
+        canRun = false
+
+        audioEngine?.stop()
+        audioPlayerNode?.stop()
+        audioEngine = nil
+        audioPlayerNode = nil
+        audioFormat = nil
+
+        log("Emulator stopped")
+    }
+
+    // MARK: - Private Methods
     
     private func setupDirectories() {
         let fileManager = FileManager.default
@@ -78,15 +151,73 @@ class LibretroFrontend {
         log("Assets directory: \(assetsDir)")
     }
     
-    // MARK: - Audio Setup
-    
     private func setupAudio() {
         audioEngine = AVAudioEngine()
         log("Audio engine initialized")
         // Further audio setup would go here
     }
     
-    // MARK: - Libretro Environment Callbacks
+    private func setupCore() throws {
+        log("Setting up core from path: \(dylibPath)")
+        guard let handle = dlopen(dylibPath, RTLD_LAZY) else {
+            throw LibretroError.failedToLoadCore(String(cString: dlerror()))
+        }
+        coreHandle = handle
+
+        guard let retro_set_environment = dlsym(handle, "retro_set_environment").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UnsafeMutableRawPointer?) -> Bool) -> Void).self) }),
+              let retro_init = dlsym(handle, "retro_init").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
+              let retro_deinit = dlsym(handle, "retro_deinit").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
+              let retro_run = dlsym(handle, "retro_run").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
+              let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeMutableRawPointer) -> Void).self) }),
+              let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void) -> Void).self) }),
+              let retro_set_audio_sample = dlsym(handle, "retro_set_audio_sample").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int16, Int16) -> Void) -> Void).self) }),
+              let retro_set_audio_sample_batch = dlsym(handle, "retro_set_audio_sample_batch").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafePointer<Int16>?, Int) -> Int) -> Void).self) }),
+              let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self) }),
+              let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16) -> Void).self) }),
+              let retro_load_game = dlsym(handle, "retro_load_game").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeRawPointer) -> Bool).self) })
+        else {
+            throw LibretroError.symbolNotFound("Core function")
+        }
+
+        retro_set_environment(swiftEnvironCallback)
+        retro_set_video_refresh(videoRefreshCallback)
+        retro_set_audio_sample(audioSampleCallback)
+        retro_set_audio_sample_batch(audioSampleBatchCallback)
+        retro_set_input_poll(inputPollCallback)
+        retro_set_input_state(inputStateCallback)
+
+        self.retro_init = retro_init
+        self.retro_deinit = retro_deinit
+        self.retro_run = retro_run
+        self.retro_get_system_av_info = retro_get_system_av_info
+        self.retro_load_game = retro_load_game
+
+        retro_init()
+        log("Core set up and initialized")
+    }
+    
+    private func loadGame(at path: String) -> Bool {
+        log("Loading game from path: \(path)")
+        guard let retro_load_game = self.retro_load_game else {
+            log("Core functions not set up properly")
+            return false
+        }
+
+        var gameInfo = retro_game_info(
+            path: (path as NSString).utf8String,
+            data: nil,
+            size: 0,
+            meta: nil
+        )
+
+        return retro_load_game(&gameInfo)
+    }
+    
+    @objc private func step(displayLink: CADisplayLink) {
+        retro_run?()
+    }
+    
+    // MARK: - Callback Methods
     
     func environCallback(_ cmd: UInt32, _ data: UnsafeMutableRawPointer?) -> Bool {
         switch cmd {
@@ -157,40 +288,29 @@ class LibretroFrontend {
         return false
     }
     
-    // MARK: - Video Output
-    
     private let videoRefreshCallback: @convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void = { (data, width, height, pitch) in
-        guard let data = data else {
-            print("Received null video frame")
-            return
-        }
-        
+        guard let data = data else { return }
         globalLibretroFrontend?.handleVideoFrame(data, width: Int(width), height: Int(height), pitch: Int(pitch))
     }
     
     private func handleVideoFrame(_ videoData: UnsafeRawPointer, width: Int, height: Int, pitch: Int) {
-        videoOutputHandler?(videoData, width, height, pitch)
+        guard let cgImage = createCGImage(from: videoData, width: width, height: height, pitch: pitch) else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.videoFrame = cgImage
+        }
     }
     
-    // MARK: - Audio Output
-    
     private let audioSampleCallback: @convention(c) (Int16, Int16) -> Void = { (left, right) in
-        print("Received audio sample: L:\(left), R:\(right)")
+        // Handle audio sample if needed
     }
     
     private let audioSampleBatchCallback: @convention(c) (UnsafePointer<Int16>?, Int) -> Int = { (data, frames) in
-        guard let data = data else {
-            print("Received null audio batch")
-            return 0
-        }
-        globalLibretroFrontend?.handleAudioSamples(data, frames: frames)
+        // Handle audio batch if needed
         return frames
     }
     
-    // MARK: - Input Handling
-    
     private let inputPollCallback: @convention(c) () -> Void = {
-        print("Input poll called")
+        // Handle input polling if needed
     }
     
     private let inputStateCallback: @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16 = { (port, device, index, id) in
@@ -201,106 +321,83 @@ class LibretroFrontend {
         return inputState[port]?[id] == true ? 1 : 0
     }
     
-    func updateInputState(port: UInt32, buttonId: UInt32, isPressed: Bool) {
+    // MARK: - Utility Methods
+    
+    private func log(_ message: String) {
+        print(message)
+        DispatchQueue.main.async {
+            self.logMessages.append(message)
+        }
+    }
+    
+    private func createCGImage(from buffer: UnsafeRawPointer, width: Int, height: Int, pitch: Int) -> CGImage? {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let context = CGContext(data: UnsafeMutableRawPointer(mutating: buffer),
+                                      width: width,
+                                      height: height,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: pitch,
+                                      space: colorSpace,
+                                      bitmapInfo: bitmapInfo.rawValue) else {
+            return nil
+        }
+        return context.makeImage()
+    }
+
+    private func setupGamepadHandling() {
+        NotificationCenter.default.addObserver(self, selector: #selector(handleControllerConnected), name: .GCControllerDidConnect, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleControllerDisconnected), name: .GCControllerDidDisconnect, object: nil)
+        
+        gamepads = GCController.controllers()
+        for gamepad in gamepads {
+            configureGamepadHandlers(gamepad)
+        }
+    }
+
+    @objc private func handleControllerConnected(_ notification: Notification) {
+        guard let gamepad = notification.object as? GCController else { return }
+        gamepads.append(gamepad)
+        configureGamepadHandlers(gamepad)
+    }
+
+    @objc private func handleControllerDisconnected(_ notification: Notification) {
+        guard let gamepad = notification.object as? GCController else { return }
+        gamepads.removeAll { $0 == gamepad }
+    }
+
+    private func configureGamepadHandlers(_ gamepad: GCController) {
+        gamepad.extendedGamepad?.valueChangedHandler = { [weak self] (gamepad, element) in
+            self?.handleGamepadInput(gamepad: gamepad)
+        }
+    }
+
+    private func handleGamepadInput(gamepad: GCExtendedGamepad) {
+        let buttonMappings: [(GCControllerButtonInput, UInt32)] = [
+            (gamepad.buttonA, RETRO_DEVICE_ID_JOYPAD.A),
+            (gamepad.buttonB, RETRO_DEVICE_ID_JOYPAD.B),
+            (gamepad.buttonX, RETRO_DEVICE_ID_JOYPAD.X),
+            (gamepad.buttonY, RETRO_DEVICE_ID_JOYPAD.Y),
+            (gamepad.leftShoulder, RETRO_DEVICE_ID_JOYPAD.L),
+            (gamepad.rightShoulder, RETRO_DEVICE_ID_JOYPAD.R),
+            (gamepad.leftTrigger, RETRO_DEVICE_ID_JOYPAD.L2),
+            (gamepad.rightTrigger, RETRO_DEVICE_ID_JOYPAD.R2),
+            (gamepad.dpad.up, RETRO_DEVICE_ID_JOYPAD.UP),
+            (gamepad.dpad.down, RETRO_DEVICE_ID_JOYPAD.DOWN),
+            (gamepad.dpad.left, RETRO_DEVICE_ID_JOYPAD.LEFT),
+            (gamepad.dpad.right, RETRO_DEVICE_ID_JOYPAD.RIGHT)
+        ]
+        
+        for (button, retroButton) in buttonMappings {
+            updateInputState(port: 0, buttonId: retroButton, isPressed: button.isPressed)
+        }
+    }
+
+    private func updateInputState(port: UInt32, buttonId: UInt32, isPressed: Bool) {
         if inputState[port] == nil {
             inputState[port] = [:]
         }
         inputState[port]?[buttonId] = isPressed
-    }
-    
-    // MARK: - Core Loading and Running
-    
-    func setupCore(at path: String) throws {
-        log("Setting up core from path: \(path)")
-        // Load the core dylib
-        guard let handle = dlopen(path, RTLD_LAZY) else {
-            throw LibretroError.failedToLoadCore(String(cString: dlerror()))
-        }
-        coreHandle = handle
-
-        // Set up function pointers
-        guard let retro_set_environment = dlsym(handle, "retro_set_environment").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UnsafeMutableRawPointer?) -> Bool) -> Void).self) }),
-              let retro_init = dlsym(handle, "retro_init").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-              let retro_run = dlsym(handle, "retro_run").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-              let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeMutableRawPointer) -> Void).self) }),
-              let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void) -> Void).self) }),
-              let retro_set_audio_sample = dlsym(handle, "retro_set_audio_sample").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int16, Int16) -> Void) -> Void).self) }),
-              let retro_set_audio_sample_batch = dlsym(handle, "retro_set_audio_sample_batch").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafePointer<Int16>?, Int) -> Int) -> Void).self) }),
-              let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self) }),
-              let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16) -> Void).self) }),
-              let retro_load_game = dlsym(handle, "retro_load_game").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeMutableRawPointer) -> Bool).self) })
-        else {
-            throw LibretroError.symbolNotFound("Core function")
-        }
-
-        // Set environment
-        retro_set_environment(swiftEnvironCallback)
-
-        // Set other callbacks
-        retro_set_video_refresh(videoRefreshCallback)
-        retro_set_audio_sample(audioSampleCallback)
-        retro_set_audio_sample_batch(audioSampleBatchCallback)
-        retro_set_input_poll(inputPollCallback)
-        retro_set_input_state(inputStateCallback)
-
-        // Store function pointers
-        self.retro_init = retro_init
-        self.retro_run = retro_run
-        self.retro_get_system_av_info = retro_get_system_av_info
-        self.retro_load_game = retro_load_game
-
-        // Initialize
-        retro_init()
-
-        log("Core set up and initialized from: \(path)")
-    }
-    
-    func loadGame(at path: String) -> Bool {
-        log("Loading game from path: \(path)")
-        guard let retro_load_game = self.retro_load_game else {
-            log("retro_load_game function not set up")
-            return false
-        }
-
-        var gameInfo = retro_game_info(
-            path: (path as NSString).utf8String,
-            data: nil,
-            size: 0,
-            meta: nil
-        )
-
-        let success = retro_load_game(&gameInfo)
-        log(success ? "Game loaded successfully" : "Failed to load game")
-        return success
-    }
-    
-    func runCore() {
-        guard let retro_run = self.retro_run else {
-            log("Core functions not set up properly")
-            return
-        }
-
-        retro_run()
-    }
-    
-    // MARK: - Utility
-    
-    private func log(_ message: String) {
-        if debug {
-            print("LibretroFrontend: \(message)")
-        }
-    }
-    
-    func setVideoOutputHandler(_ handler: @escaping (UnsafeRawPointer, Int, Int, Int) -> Void) {
-        self.videoOutputHandler = handler
-    }
-    
-    private func handleAudioSamples(_ samples: UnsafePointer<Int16>, frames: Int) {
-        audioOutputHandler?(samples, frames)
-    }
-    
-    func setAudioOutputHandler(_ handler: @escaping (UnsafePointer<Int16>, Int) -> Void) {
-        self.audioOutputHandler = handler
     }
 }
 
@@ -348,6 +445,12 @@ struct retro_game_info {
     var meta: UnsafePointer<CChar>?
 }
 
+enum retro_pixel_format: UInt32 {
+    case RETRO_PIXEL_FORMAT_0RGB1555 = 0
+    case RETRO_PIXEL_FORMAT_XRGB8888 = 1
+    case RETRO_PIXEL_FORMAT_RGB565 = 2
+}
+
 // Additional utility functions if needed
 
 extension LibretroFrontend {
@@ -377,12 +480,9 @@ struct RETRO_DEVICE_ID_JOYPAD {
 }
 
 // Example usage:
-// let libretro = LibretroFrontend()
+// let libretro = LibretroFrontend(dylibPath: "/path/to/core.dylib", isoPath: "/path/to/game.iso")
 // do {
-//     try libretro.setupCore(at: "/path/to/core.dylib")
-//     if libretro.loadGame(at: "/path/to/game.rom") {
-//         libretro.runCore()
-//     }
+//     try libretro.launch()
 // } catch {
 //     print("Error: \(error)")
 // }
