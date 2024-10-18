@@ -26,7 +26,7 @@ struct ContentView: View {
                 
                 Button(action: {
                     do {
-                        if libretroFrontend.isLaunched {
+                        if libretroFrontend.isRunning {
                             libretroFrontend.stopEmulation()
                         } else {
                             try libretroFrontend.launch()
@@ -35,10 +35,10 @@ struct ContentView: View {
                         print("Error launching emulator: \(error)")
                     }
                 }) {
-                    Text(libretroFrontend.isLaunched ? "Stop" : "Launch")
+                    Text(libretroFrontend.isRunning ? "Stop" : "Launch")
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(libretroFrontend.isLaunched ? Color.red : Color.blue)
+                        .background(libretroFrontend.isRunning ? Color.red : Color.blue)
                         .foregroundColor(.white)
                         .cornerRadius(10)
                 }
