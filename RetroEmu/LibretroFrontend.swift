@@ -1,6 +1,6 @@
-import Foundation
 import AVFoundation
 import CoreGraphics
+import Foundation
 import GameController
 
 // Global variable to hold our LibretroFrontend instance
@@ -65,21 +65,21 @@ class LibretroFrontend: ObservableObject {
 
     func launch() throws {
         log("Launching emulator...")
-        
+
         guard !isLaunched else {
             log("Emulator is already launched")
             return
         }
-        
+
         do {
             try setupCore()
             isInitialized = true
             log("Core initialized successfully")
-            
+
             if loadGame(at: isoPath) {
                 isGameLoaded = true
                 log("Game loaded successfully")
-                
+
                 startEmulatorLoop()
                 isLaunched = true
                 log("Emulator launched successfully")
@@ -92,7 +92,7 @@ class LibretroFrontend: ObservableObject {
             throw error
         }
     }
-    
+
     func stopEmulation() {
         log("Stopping emulator...")
         displayLink?.invalidate()
@@ -115,30 +115,35 @@ class LibretroFrontend: ObservableObject {
     }
 
     // MARK: - Private Methods
-    
+
     private func setupDirectories() {
         let fileManager = FileManager.default
-        let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first!
-        
+        let documentsPath = NSSearchPathForDirectoriesInDomains(
+            .documentDirectory, .userDomainMask, true
+        ).first!
+
         let systemDir = (documentsPath as NSString).appendingPathComponent("system")
         let savesDir = (documentsPath as NSString).appendingPathComponent("saves")
         let assetsDir = (systemDir as NSString).appendingPathComponent("PPSSPP")
-        
-        try? fileManager.createDirectory(atPath: systemDir, withIntermediateDirectories: true, attributes: nil)
-        try? fileManager.createDirectory(atPath: savesDir, withIntermediateDirectories: true, attributes: nil)
-        try? fileManager.createDirectory(atPath: assetsDir, withIntermediateDirectories: true, attributes: nil)
-        
+
+        try? fileManager.createDirectory(
+            atPath: systemDir, withIntermediateDirectories: true, attributes: nil)
+        try? fileManager.createDirectory(
+            atPath: savesDir, withIntermediateDirectories: true, attributes: nil)
+        try? fileManager.createDirectory(
+            atPath: assetsDir, withIntermediateDirectories: true, attributes: nil)
+
         log("System directory: \(systemDir)")
         log("Saves directory: \(savesDir)")
         log("Assets directory: \(assetsDir)")
     }
-    
+
     private func setupAudio() {
         audioEngine = AVAudioEngine()
         log("Audio engine initialized")
         // Further audio setup would go here
     }
-    
+
     private func setupCore() throws {
         log("Setting up core from path: \(dylibPath)")
         guard let handle = dlopen(dylibPath, RTLD_LAZY) else {
@@ -146,17 +151,54 @@ class LibretroFrontend: ObservableObject {
         }
         coreHandle = handle
 
-        guard let retro_set_environment = dlsym(handle, "retro_set_environment").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UnsafeMutableRawPointer?) -> Bool) -> Void).self) }),
-              let retro_init = dlsym(handle, "retro_init").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-              let retro_deinit = dlsym(handle, "retro_deinit").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-              let retro_run = dlsym(handle, "retro_run").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-              let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeMutableRawPointer) -> Void).self) }),
-              let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void) -> Void).self) }),
-              let retro_set_audio_sample = dlsym(handle, "retro_set_audio_sample").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int16, Int16) -> Void) -> Void).self) }),
-              let retro_set_audio_sample_batch = dlsym(handle, "retro_set_audio_sample_batch").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafePointer<Int16>?, Int) -> Int) -> Void).self) }),
-              let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self) }),
-              let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16) -> Void).self) }),
-              let retro_load_game = dlsym(handle, "retro_load_game").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeRawPointer) -> Bool).self) })
+        guard
+            let retro_set_environment = dlsym(handle, "retro_set_environment").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (@convention(c) (UInt32, UnsafeMutableRawPointer?) -> Bool)
+                        -> Void).self)
+            }),
+            let retro_init = dlsym(handle, "retro_init").map({
+                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
+            }),
+            let retro_deinit = dlsym(handle, "retro_deinit").map({
+                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
+            }),
+            let retro_run = dlsym(handle, "retro_run").map({
+                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
+            }),
+            let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({
+                unsafeBitCast($0, to: (@convention(c) (UnsafeMutableRawPointer) -> Void).self)
+            }),
+            let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (
+                        @convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void
+                    ) -> Void).self)
+            }),
+            let retro_set_audio_sample = dlsym(handle, "retro_set_audio_sample").map({
+                unsafeBitCast(
+                    $0, to: (@convention(c) (@convention(c) (Int16, Int16) -> Void) -> Void).self)
+            }),
+            let retro_set_audio_sample_batch = dlsym(handle, "retro_set_audio_sample_batch").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (@convention(c) (UnsafePointer<Int16>?, Int) -> Int) -> Void)
+                        .self)
+            }),
+            let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({
+                unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self)
+            }),
+            let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (@convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16)
+                        -> Void).self)
+            }),
+            let retro_load_game = dlsym(handle, "retro_load_game").map({
+                unsafeBitCast($0, to: (@convention(c) (UnsafeRawPointer) -> Bool).self)
+            })
         else {
             throw LibretroError.symbolNotFound("Core function")
         }
@@ -177,7 +219,7 @@ class LibretroFrontend: ObservableObject {
         retro_init()
         log("Core set up and initialized")
     }
-    
+
     private func loadGame(at path: String) -> Bool {
         log("Loading game from path: \(path)")
         guard let retro_load_game = self.retro_load_game else {
@@ -194,7 +236,7 @@ class LibretroFrontend: ObservableObject {
 
         return retro_load_game(&gameInfo)
     }
-    
+
     private func startEmulatorLoop() {
         log("Starting emulator loop...")
         isRunning = true
@@ -202,66 +244,72 @@ class LibretroFrontend: ObservableObject {
         displayLink = CADisplayLink(target: self, selector: #selector(step))
         displayLink?.add(to: .main, forMode: .common)
     }
-    
+
     @objc private func step(displayLink: CADisplayLink) {
         retro_run?()
     }
-    
+
     // MARK: - Callback Methods
-    
+
     func environCallback(_ cmd: UInt32, _ data: UnsafeMutableRawPointer?) -> Bool {
         switch cmd {
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE.rawValue:
             if let data = data?.assumingMemoryBound(to: retro_log_callback.self) {
-                data.pointee.log = { (level: UInt32, fmt: UnsafePointer<CChar>?, args: OpaquePointer) in
+                data.pointee.log = {
+                    (level: UInt32, fmt: UnsafePointer<CChar>?, args: OpaquePointer) in
                     guard let fmt = fmt else { return }
                     let levelString = ["DEBUG", "INFO", "WARN", "ERROR"][Int(level)]
                     print("Libretro [\(levelString)]")
                 }
                 return true
             }
-        
+
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY.rawValue:
             if let data = data?.assumingMemoryBound(to: UnsafePointer<CChar>?.self) {
-                let systemDir = (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first! as NSString).appendingPathComponent("system")
+                let systemDir =
+                    (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
+                    .first! as NSString).appendingPathComponent("system")
                 data.pointee = (systemDir as NSString).utf8String
                 return true
             }
-        
+
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY.rawValue:
             if let data = data?.assumingMemoryBound(to: UnsafePointer<CChar>?.self) {
-                let savesDir = (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first! as NSString).appendingPathComponent("saves")
+                let savesDir =
+                    (NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
+                    .first! as NSString).appendingPathComponent("saves")
                 data.pointee = (savesDir as NSString).utf8String
                 return true
             }
-        
+
         case RETRO_ENVIRONMENT_GET_LANGUAGE.rawValue:
             if let data = data?.assumingMemoryBound(to: UInt32.self) {
                 data.pointee = RETRO_LANGUAGE_ENGLISH.rawValue
                 return true
             }
-        
+
         case RETRO_ENVIRONMENT_GET_VARIABLE.rawValue:
             if let data = data?.assumingMemoryBound(to: retro_variable.self) {
                 if let key = data.pointee.key {
                     let variableName = String(cString: key)
                     print("Core requesting variable: \(variableName)")
 
-                    if (variableName == "ppsspp_auto_frameskip") {
-                        data.pointee.value = UnsafePointer(strdup("true"))
+                    switch variableName {
+                    case "ppsspp_rendering_mode":
+                        data.pointee.value = "hardware".withCString { UnsafePointer($0) }
                         return true
+                    case "ppsspp_auto_frameskip":
+                        data.pointee.value = "true".withCString { UnsafePointer($0) }
+                        return true
+                    default:
+                        return false
                     }
-                    
-                    let defaultValue = "default_value"
-                    data.pointee.value = UnsafePointer(strdup(defaultValue))
-                    
-                    return true
                 } else {
                     print("Core requested variable with null key")
                     return false
                 }
             }
-        
+
         case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT.rawValue:
             if let data = data?.assumingMemoryBound(to: retro_pixel_format.self) {
                 let format = data.pointee
@@ -274,24 +322,43 @@ class LibretroFrontend: ObservableObject {
                     return false
                 }
             }
-        
+
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER.rawValue:
             if let data = data?.assumingMemoryBound(to: retro_framebuffer.self) {
                 return getCurrentSoftwareFramebuffer(data)
             }
-        
+
+        case RETRO_ENVIRONMENT_SET_HW_RENDER.rawValue:
+            if let data = data?.assumingMemoryBound(to: retro_hw_render_callback.self) {
+                // Log the context_type received from the core
+                let contextType = data.pointee.context_type // should eq RETRO_HW_CONTEXT_OPENGLES2
+                log("Received HW render request with context type: \(contextType)")
+
+                // Set up the OpenGL context here
+                data.pointee.get_current_framebuffer = { /* Implement framebuffer retrieval */
+                    return nil
+                }
+                data.pointee.get_proc_address = { symbol in
+                    // Implement function pointer retrieval
+                    return nil
+                }
+                return true
+            }
+
         default:
             print("Unhandled environment call: \(cmd)")
             return false
         }
-        
+
         return false
     }
-    
-    private func getCurrentSoftwareFramebuffer(_ framebuffer: UnsafeMutablePointer<retro_framebuffer>) -> Bool {
-        let width = 640 // Replace with actual width
-        let height = 480 // Replace with actual height
-        let pitch = width * 4 // Assuming 32-bit color (XRGB8888)
+
+    private func getCurrentSoftwareFramebuffer(
+        _ framebuffer: UnsafeMutablePointer<retro_framebuffer>
+    ) -> Bool {
+        let width = 640  // Replace with actual width
+        let height = 480  // Replace with actual height
+        let pitch = width * 4  // Assuming 32-bit color (XRGB8888)
 
         if currentFramebuffer == nil {
             currentFramebuffer = retro_framebuffer(
@@ -312,75 +379,97 @@ class LibretroFrontend: ObservableObject {
 
         return false
     }
-    
-    private let videoRefreshCallback: @convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void = { (data, width, height, pitch) in
-        guard let frontend = globalLibretroFrontend else { return }
 
-        if let framebuffer = frontend.currentFramebuffer, let data = data {
-            // The core has rendered directly into our framebuffer
-            frontend.handleVideoFrame(framebuffer.data!, width: Int(framebuffer.width), height: Int(framebuffer.height), pitch: framebuffer.pitch)
-        } else if let data = data {
-            // Fallback to the original method if direct rendering wasn't used
-            frontend.handleVideoFrame(data, width: Int(width), height: Int(height), pitch: pitch)
+    private let videoRefreshCallback:
+        @convention(c) (UnsafeRawPointer?, UInt32, UInt32, Int) -> Void = {
+            (data, width, height, pitch) in
+            guard let frontend = globalLibretroFrontend else { return }
+
+            if data == RETRO_HW_FRAME_BUFFER_VALID {
+                // Handle hardware rendering
+                // This is where you would bind the OpenGL context and render
+            } else if let data = data {
+                // Fallback to the original method if direct rendering wasn't used
+                frontend.handleVideoFrame(
+                    data, width: Int(width), height: Int(height), pitch: pitch)
+            }
         }
-    }
-    
-    private func handleVideoFrame(_ videoData: UnsafeRawPointer, width: Int, height: Int, pitch: Int) {
-        guard let cgImage = createCGImage(from: videoData, width: width, height: height, pitch: pitch) else { return }
+
+    private func handleVideoFrame(
+        _ videoData: UnsafeRawPointer, width: Int, height: Int, pitch: Int
+    ) {
+        guard
+            let cgImage = createCGImage(from: videoData, width: width, height: height, pitch: pitch)
+        else { return }
         DispatchQueue.main.async { [weak self] in
             self?.videoFrame = cgImage
         }
     }
-    
+
     private let audioSampleCallback: @convention(c) (Int16, Int16) -> Void = { (left, right) in
         // Handle audio sample if needed
     }
-    
-    private let audioSampleBatchCallback: @convention(c) (UnsafePointer<Int16>?, Int) -> Int = { (data, frames) in
+
+    private let audioSampleBatchCallback: @convention(c) (UnsafePointer<Int16>?, Int) -> Int = {
+        (data, frames) in
         // Handle audio batch if needed
         return frames
     }
-    
+
     private let inputPollCallback: @convention(c) () -> Void = {
         // Handle input polling if needed
     }
-    
-    private let inputStateCallback: @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16 = { (port, device, index, id) in
-        return globalLibretroFrontend?.handleInputState(port: port, device: device, index: index, id: id) ?? 0
+
+    private let inputStateCallback: @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Int16 = {
+        (port, device, index, id) in
+        return globalLibretroFrontend?.handleInputState(
+            port: port, device: device, index: index, id: id) ?? 0
     }
-    
-    private func handleInputState(port: UInt32, device: UInt32, index: UInt32, id: UInt32) -> Int16 {
+
+    private func handleInputState(port: UInt32, device: UInt32, index: UInt32, id: UInt32) -> Int16
+    {
         return inputState[port]?[id] == true ? 1 : 0
     }
-    
+
     // MARK: - Utility Methods
-    
+
     private func log(_ message: String) {
         print(message)
         DispatchQueue.main.async {
             self.logMessages.append(message)
         }
     }
-    
-    private func createCGImage(from buffer: UnsafeRawPointer, width: Int, height: Int, pitch: Int) -> CGImage? {
+
+    private func createCGImage(from buffer: UnsafeRawPointer, width: Int, height: Int, pitch: Int)
+        -> CGImage?
+    {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-        guard let context = CGContext(data: UnsafeMutableRawPointer(mutating: buffer),
-                                      width: width,
-                                      height: height,
-                                      bitsPerComponent: 8,
-                                      bytesPerRow: pitch,
-                                      space: colorSpace,
-                                      bitmapInfo: bitmapInfo.rawValue) else {
+        let bitmapInfo = CGBitmapInfo(
+            rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue
+                | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard
+            let context = CGContext(
+                data: UnsafeMutableRawPointer(mutating: buffer),
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: pitch,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo.rawValue)
+        else {
             return nil
         }
         return context.makeImage()
     }
 
     private func setupGamepadHandling() {
-        NotificationCenter.default.addObserver(self, selector: #selector(handleControllerConnected), name: .GCControllerDidConnect, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(handleControllerDisconnected), name: .GCControllerDidDisconnect, object: nil)
-        
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleControllerConnected), name: .GCControllerDidConnect,
+            object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleControllerDisconnected),
+            name: .GCControllerDidDisconnect, object: nil)
+
         gamepads = GCController.controllers()
         for gamepad in gamepads {
             configureGamepadHandlers(gamepad)
@@ -417,9 +506,9 @@ class LibretroFrontend: ObservableObject {
             (gamepad.dpad.up, RETRO_DEVICE_ID_JOYPAD.UP),
             (gamepad.dpad.down, RETRO_DEVICE_ID_JOYPAD.DOWN),
             (gamepad.dpad.left, RETRO_DEVICE_ID_JOYPAD.LEFT),
-            (gamepad.dpad.right, RETRO_DEVICE_ID_JOYPAD.RIGHT)
+            (gamepad.dpad.right, RETRO_DEVICE_ID_JOYPAD.RIGHT),
         ]
-        
+
         for (button, retroButton) in buttonMappings {
             updateInputState(port: 0, buttonId: retroButton, isPressed: button.isPressed)
         }
@@ -442,7 +531,10 @@ struct RETRO_ENVIRONMENT_SET_LOGGING_INTERFACE { static let rawValue: UInt32 = 7
 struct RETRO_LANGUAGE_ENGLISH { static let rawValue: UInt32 = 0 }
 struct RETRO_ENVIRONMENT_GET_VARIABLE { static let rawValue: UInt32 = 15 }
 struct RETRO_ENVIRONMENT_SET_PIXEL_FORMAT { static let rawValue: UInt32 = 10 }
-struct RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER { static let rawValue: UInt32 = 40 | 0x10000 }
+struct RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER {
+    static let rawValue: UInt32 = 40
+}
+struct RETRO_ENVIRONMENT_SET_HW_RENDER { static let rawValue: UInt32 = 14 }
 
 struct retro_log_callback {
     var log: (@convention(c) (UInt32, UnsafePointer<CChar>?, OpaquePointer) -> Void)?
@@ -494,11 +586,17 @@ struct retro_framebuffer {
     var memory_flags: UInt32
 }
 
+struct retro_hw_render_callback {
+    var context_type: UInt32
+    var get_current_framebuffer: (() -> UnsafeMutablePointer<retro_framebuffer>?)?
+    var get_proc_address: ((UnsafePointer<CChar>) -> UnsafeMutableRawPointer?)?
+}
+
 // Additional utility functions if needed
 
 extension LibretroFrontend {
     // You can add extension methods here if you want to keep the main class definition cleaner
-    
+
     // Add more utility methods as needed
 }
 
@@ -529,3 +627,5 @@ struct RETRO_DEVICE_ID_JOYPAD {
 // } catch {
 //     print("Error: \(error)")
 // }
+
+let RETRO_HW_FRAME_BUFFER_VALID = UnsafeRawPointer(bitPattern: -1)

@@ -5,7 +5,7 @@ struct ContentView: View {
     @StateObject private var libretroFrontend: LibretroFrontend
 
     init() {
-        let dylibPath = Bundle.main.path(forResource: "ppsspp_libretro", ofType: "dylib", inDirectory: "Frameworks") ?? ""
+        let dylibPath = Bundle.main.path(forResource: "ppsspp_libretro_debug", ofType: "dylib", inDirectory: "Frameworks") ?? ""
         let isoPath = Bundle.main.path(forResource: "gow", ofType: "iso") ?? ""
         _libretroFrontend = StateObject(wrappedValue: LibretroFrontend(dylibPath: dylibPath, isoPath: isoPath))
     }
