@@ -42,9 +42,9 @@ class LibretroFrontend: ObservableObject {
     private var currentPixelFormat: retro_pixel_format = RETRO_PIXEL_FORMAT_XRGB8888
     private var inputState: [Int32: [Int32: Bool]] = [:]
 
-    private var glContext: EAGLContext?
-    private var eaglLayer: CAEAGLLayer?
-    private var hwRenderCallback: retro_hw_render_callback?
+    var glContext: EAGLContext?
+    var eaglLayer: CAEAGLLayer?
+    var hwRenderCallback: retro_hw_render_callback?
 
     init(dylibPath: String, isoPath: String) {
         self.dylibPath = dylibPath
@@ -140,46 +140,15 @@ class LibretroFrontend: ObservableObject {
         coreHandle = handle
 
         guard
-            let retro_set_environment = dlsym(handle, "retro_set_environment").map({
-                unsafeBitCast(
-                    $0,
-                    to: (@convention(c) (@convention(c) (Int32, UnsafeMutableRawPointer?) -> Bool)
-                        -> Void).self)
-            }),
-            let retro_init = dlsym(handle, "retro_init").map({
-                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
-            }),
-            let retro_deinit = dlsym(handle, "retro_deinit").map({
-                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
-            }),
-            let retro_run = dlsym(handle, "retro_run").map({
-                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
-            }),
-            let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({
-                unsafeBitCast(
-                    $0,
-                    to: (@convention(c) (
-                        @convention(c) (UnsafeRawPointer?, Int32, Int32, Int) -> Void
-                    ) -> Void).self)
-            }),
-            let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({
-                unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self)
-            }),
-            let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({
-                unsafeBitCast(
-                    $0,
-                    to: (@convention(c) (@convention(c) (Int32, Int32, Int32, Int32) -> Int16) ->
-                        Void).self)
-            }),
-            let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({
-                unsafeBitCast(
-                    $0,
-                    to: (@convention(c) (UnsafeMutablePointer<retro_system_av_info>) -> Void).self)
-            }),
-            let retro_load_game = dlsym(handle, "retro_load_game").map({
-                unsafeBitCast(
-                    $0, to: (@convention(c) (UnsafePointer<retro_game_info>) -> Bool).self)
-            })
+            let retro_set_environment = dlsym(handle, "retro_set_environment").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int32, UnsafeMutableRawPointer?) -> Bool) -> Void).self) }),
+            let retro_init = dlsym(handle, "retro_init").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
+            let retro_deinit = dlsym(handle, "retro_deinit").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
+            let retro_run = dlsym(handle, "retro_run").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
+            let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({ unsafeBitCast($0,to: (@convention(c) (@convention(c) (UnsafeRawPointer?, Int32, Int32, Int) -> Void) -> Void).self) }),
+            let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self) }),
+            let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int32, Int32, Int32, Int32) -> Int16) -> Void).self) }),
+            let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeMutablePointer<retro_system_av_info>) -> Void).self) }),
+            let retro_load_game = dlsym(handle, "retro_load_game").map({ unsafeBitCast( $0, to: (@convention(c) (UnsafePointer<retro_game_info>) -> Bool).self) })
         else {
             throw LibretroError.symbolNotFound("Core function")
         }
@@ -224,7 +193,7 @@ class LibretroFrontend: ObservableObject {
         displayLink?.add(to: .main, forMode: .common)
     }
 
-    @objc private func step(displayLink: CADisplayLink) {
+    @objc func step(displayLink: CADisplayLink) {
         retro_run?()
     }
 
@@ -310,8 +279,9 @@ class LibretroFrontend: ObservableObject {
     private func setupHardwareRendering(_ hwRender: retro_hw_render_callback) {
         self.hwRenderCallback = hwRender
 
-        let api: EAGLRenderingAPI =
-            hwRender.context_type == RETRO_HW_CONTEXT_OPENGLES3 ? .openGLES3 : .openGLES2
+        print("Setting up hardware rendering with context type: \(hwRender.context_type)")
+
+        let api: EAGLRenderingAPI = hwRender.context_type == RETRO_HW_CONTEXT_OPENGLES3 ? .openGLES3 : .openGLES2
         glContext = EAGLContext(api: api)
 
         if let context = glContext {

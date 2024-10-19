@@ -1,5 +1,45 @@
 import SwiftUI
-import CoreGraphics
+import GLKit
+
+struct GLView: UIViewRepresentable {
+    var libretroFrontend: LibretroFrontend
+
+    func makeUIView(context: Context) -> GLKView {
+        guard let glContext = libretroFrontend.glContext else {
+            fatalError("OpenGL context not initialized")
+        }
+        
+        let glView = GLKView(frame: .zero, context: glContext)
+        glView.delegate = context.coordinator
+        glView.enableSetNeedsDisplay = false
+        glView.contentScaleFactor = UIScreen.main.scale
+        
+        libretroFrontend.eaglLayer = glView.layer as? CAEAGLLayer
+        
+        return glView
+    }
+
+    func updateUIView(_ uiView: GLKView, context: Context) {
+        // Update view if needed
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, GLKViewDelegate {
+        var parent: GLView
+
+        init(_ parent: GLView) {
+            self.parent = parent
+        }
+
+        func glkView(_ view: GLKView, drawIn rect: CGRect) {
+            // This method is called when the view needs to be redrawn
+            // We don't need to do anything here as the rendering is handled in the step method
+        }
+    }
+}
 
 struct ContentView: View {
     @StateObject private var libretroFrontend: LibretroFrontend
@@ -12,10 +52,8 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            if let videoFrame = libretroFrontend.videoFrame {
-                Image(uiImage: UIImage(cgImage: videoFrame))
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
+            if libretroFrontend.isInitialized {
+                GLView(libretroFrontend: libretroFrontend)
                     .edgesIgnoringSafeArea(.all)
             } else {
                 Color.black.edgesIgnoringSafeArea(.all)
@@ -54,11 +92,3 @@ struct ContentView: View {
         }
     }
 }
-
-#if DEBUG
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
-    }
-}
-#endif
