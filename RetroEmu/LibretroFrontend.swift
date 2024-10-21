@@ -50,10 +50,17 @@ class LibretroFrontend: ObservableObject {
     var framebuffer: GLuint = 0
     var colorRenderbuffer: GLuint = 0
     var depthRenderbuffer: GLuint = 0
+    
+    private var audioBuffer: [Int16]
+    private let audioBufferCapacity = 4096 // Adjust as needed
+    private let audioBufferLock = NSLock()
+    private let audioQueue = DispatchQueue(label: "com.retroemu.audioQueue", qos: .userInteractive)
+    private let sampleRate: Double = 44100.0
 
     init(dylibPath: String, isoPath: String) {
         self.dylibPath = dylibPath
         self.isoPath = isoPath
+        self.audioBuffer = [Int16](repeating: 0, count: audioBufferCapacity)
 
         copyPPSSPPResources {
             globalLibretroFrontend = self
@@ -102,6 +109,10 @@ class LibretroFrontend: ObservableObject {
         isGameLoaded = false
         isInitialized = false
 
+        audioBufferLock.lock()
+        audioBuffer.removeAll()
+        audioBufferLock.unlock()
+        
         if let context = glContext {
             if EAGLContext.current() == context {
                 EAGLContext.setCurrent(nil)
@@ -184,7 +195,13 @@ class LibretroFrontend: ObservableObject {
             let retro_load_game = dlsym(handle, "retro_load_game").map({
                 unsafeBitCast(
                     $0, to: (@convention(c) (UnsafePointer<retro_game_info>) -> Bool).self)
-            })
+            }),
+                let retro_set_audio_sample = dlsym(handle, "retro_set_audio_sample").map({
+                            unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int16, Int16) -> Void) -> Void).self)
+                        }),
+                        let retro_set_audio_sample_batch = dlsym(handle, "retro_set_audio_sample_batch").map({
+                            unsafeBitCast($0, to: (@convention(c) (@convention(c) (UnsafePointer<Int16>?, Int32) -> Int32) -> Void).self)
+                        })
         else {
             throw LibretroError.symbolNotFound("Core function")
         }
@@ -193,6 +210,8 @@ class LibretroFrontend: ObservableObject {
         retro_set_video_refresh(videoRefreshCallback)
         retro_set_input_poll(inputPollCallback)
         retro_set_input_state(inputStateCallback)
+        retro_set_audio_sample(audioSampleCallback)
+        retro_set_audio_sample_batch(audioSampleBatchCallback)
 
         self.retro_init = retro_init
         self.retro_deinit = retro_deinit
@@ -317,6 +336,18 @@ class LibretroFrontend: ObservableObject {
                 data.pointee = self.hwRenderCallback!
                 return true
             }
+            
+        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+            if let data = data?.assumingMemoryBound(to: Bool.self) {
+                data.pointee = false  // Set to true if variables have been updated
+                return true
+            }
+
+        case RETRO_ENVIRONMENT_GET_JIT_CAPABLE:
+            if let data = data?.assumingMemoryBound(to: Bool.self) {
+                data.pointee = false  // Set to true if JIT is supported
+                return true
+            }
 
         default:
             log("Unhandled environment call: \(cmd)")
@@ -397,7 +428,6 @@ class LibretroFrontend: ObservableObject {
         @convention(c) (UnsafeRawPointer?, Int32, Int32, Int) -> Void = {
             (data, width, height, pitch) in
             guard let frontend = globalLibretroFrontend else { return }
-            frontend.handleVideoRefresh(data, width: width, height: height, pitch: pitch)
         }
 
     private let inputPollCallback: @convention(c) () -> Void = {
@@ -409,11 +439,16 @@ class LibretroFrontend: ObservableObject {
         return globalLibretroFrontend?.handleInputState(
             port: port, device: device, index: index, id: id) ?? 0
     }
-
-    private func handleVideoRefresh(
-        _ data: UnsafeRawPointer?, width: Int32, height: Int32, pitch: Int
-    ) {
-        // Handle video refresh, create CGImage if needed
+    
+    private let audioSampleCallback: @convention(c) (Int16, Int16) -> Void = { (left, right) in
+        guard let frontend = globalLibretroFrontend else { return }
+        frontend.handleAudioSample(left: left, right: right)
+    }
+    
+    private let audioSampleBatchCallback: @convention(c) (UnsafePointer<Int16>?, Int32) -> Int32 = { (data, frames) in
+        guard let frontend = globalLibretroFrontend,
+              let data = data else { return 0 }
+        return frontend.handleAudioSampleBatch(data: data, frames: frames)
     }
 
     private func pollInputs() {
@@ -422,6 +457,53 @@ class LibretroFrontend: ObservableObject {
 
     private func handleInputState(port: Int32, device: Int32, index: Int32, id: Int32) -> Int16 {
         return inputState[port]?[id] == true ? 1 : 0
+    }
+    
+    // MARK: Audio
+
+    private func handleAudioSample(left: Int16, right: Int16) {
+        audioQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.audioBufferLock.lock()
+            defer { self.audioBufferLock.unlock() }
+            
+            if self.audioBuffer.count + 2 <= self.audioBufferCapacity {
+                self.audioBuffer.append(left)
+                self.audioBuffer.append(right)
+            }
+            
+            if self.audioBuffer.count >= self.audioBufferCapacity {
+                self.flushAudioBuffer()
+            }
+        }
+    }
+
+    private func handleAudioSampleBatch(data: UnsafePointer<Int16>, frames: Int32) -> Int32 {
+        audioQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.audioBufferLock.lock()
+            defer { self.audioBufferLock.unlock() }
+            
+            let framesToCopy = min(Int(frames), (self.audioBufferCapacity - self.audioBuffer.count) / 2)
+            self.audioBuffer.append(contentsOf: UnsafeBufferPointer(start: data, count: framesToCopy * 2))
+            
+            if self.audioBuffer.count >= self.audioBufferCapacity {
+                self.flushAudioBuffer()
+            }
+        }
+        return frames // Return the number of frames we intended to process
+    }
+
+    private func flushAudioBuffer() {
+        audioQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.audioBufferLock.lock()
+            defer { self.audioBufferLock.unlock() }
+            
+            // In a real implementation, you would send this data to the audio output
+            print("Audio buffer flushed: \(self.audioBuffer.count) samples")
+            self.audioBuffer.removeAll(keepingCapacity: true)
+        }
     }
 
     // MARK: - Gamepad Handling
@@ -568,4 +650,3 @@ class LibretroFrontend: ObservableObject {
 struct retro_log_callback {
     var log: (@convention(c) (UInt32, UnsafePointer<CChar>?) -> Void)?
 }
-
