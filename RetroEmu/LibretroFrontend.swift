@@ -140,15 +140,46 @@ class LibretroFrontend: ObservableObject {
         coreHandle = handle
 
         guard
-            let retro_set_environment = dlsym(handle, "retro_set_environment").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int32, UnsafeMutableRawPointer?) -> Bool) -> Void).self) }),
-            let retro_init = dlsym(handle, "retro_init").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-            let retro_deinit = dlsym(handle, "retro_deinit").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-            let retro_run = dlsym(handle, "retro_run").map({ unsafeBitCast($0, to: (@convention(c) () -> Void).self) }),
-            let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({ unsafeBitCast($0,to: (@convention(c) (@convention(c) (UnsafeRawPointer?, Int32, Int32, Int) -> Void) -> Void).self) }),
-            let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self) }),
-            let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({ unsafeBitCast($0, to: (@convention(c) (@convention(c) (Int32, Int32, Int32, Int32) -> Int16) -> Void).self) }),
-            let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({ unsafeBitCast($0, to: (@convention(c) (UnsafeMutablePointer<retro_system_av_info>) -> Void).self) }),
-            let retro_load_game = dlsym(handle, "retro_load_game").map({ unsafeBitCast( $0, to: (@convention(c) (UnsafePointer<retro_game_info>) -> Bool).self) })
+            let retro_set_environment = dlsym(handle, "retro_set_environment").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (@convention(c) (Int32, UnsafeMutableRawPointer?) -> Bool)
+                        -> Void).self)
+            }),
+            let retro_init = dlsym(handle, "retro_init").map({
+                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
+            }),
+            let retro_deinit = dlsym(handle, "retro_deinit").map({
+                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
+            }),
+            let retro_run = dlsym(handle, "retro_run").map({
+                unsafeBitCast($0, to: (@convention(c) () -> Void).self)
+            }),
+            let retro_set_video_refresh = dlsym(handle, "retro_set_video_refresh").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (
+                        @convention(c) (UnsafeRawPointer?, Int32, Int32, Int) -> Void
+                    ) -> Void).self)
+            }),
+            let retro_set_input_poll = dlsym(handle, "retro_set_input_poll").map({
+                unsafeBitCast($0, to: (@convention(c) (@convention(c) () -> Void) -> Void).self)
+            }),
+            let retro_set_input_state = dlsym(handle, "retro_set_input_state").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (@convention(c) (Int32, Int32, Int32, Int32) -> Int16) ->
+                        Void).self)
+            }),
+            let retro_get_system_av_info = dlsym(handle, "retro_get_system_av_info").map({
+                unsafeBitCast(
+                    $0,
+                    to: (@convention(c) (UnsafeMutablePointer<retro_system_av_info>) -> Void).self)
+            }),
+            let retro_load_game = dlsym(handle, "retro_load_game").map({
+                unsafeBitCast(
+                    $0, to: (@convention(c) (UnsafePointer<retro_game_info>) -> Bool).self)
+            })
         else {
             throw LibretroError.symbolNotFound("Core function")
         }
@@ -188,6 +219,8 @@ class LibretroFrontend: ObservableObject {
     private func startEmulatorLoop() {
         log("Starting emulator loop...")
         isRunning = true
+
+        hwRenderCallback?.context_reset()
 
         displayLink = CADisplayLink(target: self, selector: #selector(step))
         displayLink?.add(to: .main, forMode: .common)
@@ -262,6 +295,8 @@ class LibretroFrontend: ObservableObject {
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER:
             if let data = data?.assumingMemoryBound(to: retro_hw_render_callback.self) {
+                print(
+                    "Setting up hardware rendering with context type: \(data.pointee.context_type)")
                 setupHardwareRendering(data.pointee)
                 return true
             }
@@ -281,7 +316,8 @@ class LibretroFrontend: ObservableObject {
 
         print("Setting up hardware rendering with context type: \(hwRender.context_type)")
 
-        let api: EAGLRenderingAPI = hwRender.context_type == RETRO_HW_CONTEXT_OPENGLES3 ? .openGLES3 : .openGLES2
+        let api: EAGLRenderingAPI =
+            hwRender.context_type == RETRO_HW_CONTEXT_OPENGLES3 ? .openGLES3 : .openGLES2
         glContext = EAGLContext(api: api)
 
         if let context = glContext {
@@ -299,10 +335,6 @@ class LibretroFrontend: ObservableObject {
                     dlsym(dlopen(nil, RTLD_LAZY), symbolName), to: retro_proc_address_t.self)
             }
         }
-    }
-
-    private func contextReset() {
-
     }
 
     // MARK: - Callbacks
