@@ -345,7 +345,7 @@ class LibretroFrontend: ObservableObject {
                 kEAGLDrawablePropertyColorFormat: kEAGLColorFormatRGBA8
             ]
             
-            var width: GLsizei = 0, height: GLsizei = 0
+            let width: GLsizei = 640, height: GLsizei = 480
 
             glGenFramebuffers(1, &framebuffer);
             glBindFramebuffer(GLenum(GL_FRAMEBUFFER), framebuffer);
@@ -363,6 +363,8 @@ class LibretroFrontend: ObservableObject {
             var status: GLenum = glCheckFramebufferStatus(GLenum(GL_FRAMEBUFFER)) ;
             if(status != GL_FRAMEBUFFER_COMPLETE) {
                 print("Framebuffer not complete: \(status)")
+            } else {
+                print("Framebuffer complete: \(framebuffer)")
             }
             
             // Set the get_current_framebuffer callback
