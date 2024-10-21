@@ -9,10 +9,14 @@ struct GLView: UIViewRepresentable {
             fatalError("OpenGL context not initialized")
         }
         
-        let glView = GLKView(frame: .zero, context: glContext)
+        let glView = GLKView(frame: CGRect(x: 0, y: 0, width: 320, height: 240), context: glContext)
         glView.delegate = context.coordinator
         glView.enableSetNeedsDisplay = false
         glView.contentScaleFactor = UIScreen.main.scale
+        
+        // Add a border to the GLKView
+        glView.layer.borderWidth = 2.0
+        glView.layer.borderColor = UIColor.red.cgColor
         
         libretroFrontend.eaglLayer = glView.layer as? CAEAGLLayer
         
@@ -35,8 +39,26 @@ struct GLView: UIViewRepresentable {
         }
 
         func glkView(_ view: GLKView, drawIn rect: CGRect) {
-            // This method is called when the view needs to be redrawn
-            // We don't need to do anything here as the rendering is handled in the step method
+            print("glkView called with rect: \(rect)")
+            guard let context = parent.libretroFrontend.glContext else {
+                print("OpenGL context is nil")
+                return
+            }
+            EAGLContext.setCurrent(context)
+            
+            print("Binding framebuffer: \(parent.libretroFrontend.framebuffer)")
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), parent.libretroFrontend.framebuffer)
+            glViewport(0, 0, GLsizei(view.bounds.width), GLsizei(view.bounds.height))
+            
+            // Fill the view with white
+            glClearColor(1.0, 1.0, 1.0, 1.0)
+            glClear(GLbitfield(GL_COLOR_BUFFER_BIT))
+            
+            print("Binding color renderbuffer: \(parent.libretroFrontend.colorRenderbuffer)")
+            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), parent.libretroFrontend.colorRenderbuffer)
+            context.presentRenderbuffer(Int(GL_RENDERBUFFER))
+            
+            print("Finished drawing")
         }
     }
 }
@@ -52,9 +74,11 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+            Color.gray.edgesIgnoringSafeArea(.all) // Add a background color
+            
             if libretroFrontend.isInitialized {
                 GLView(libretroFrontend: libretroFrontend)
-                    .edgesIgnoringSafeArea(.all)
+                    .border(Color.blue, width: 2) // Add a border to the SwiftUI view
             } else {
                 Color.black.edgesIgnoringSafeArea(.all)
             }

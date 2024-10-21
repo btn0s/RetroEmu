@@ -27,6 +27,9 @@ class LibretroFrontend: ObservableObject {
     @Published var isGameLoaded = false
     @Published var logMessages: [String] = []
     @Published var videoFrame: CGImage?
+    @Published var currentVideoWidth: Int = 0
+    @Published var currentVideoHeight: Int = 0
+    @Published var needsRedraw: Bool = false
 
     private let dylibPath: String
     private let isoPath: String
@@ -378,21 +381,21 @@ class LibretroFrontend: ObservableObject {
             
             let width: GLsizei = 640, height: GLsizei = 480
 
-            glGenFramebuffers(1, &framebuffer);
-            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), framebuffer);
+            glGenFramebuffers(1, &framebuffer)
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), framebuffer)
             
-            glGenRenderbuffers(1, &colorRenderbuffer);
-            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), colorRenderbuffer);
-            glRenderbufferStorage(GLenum(GL_RENDERBUFFER), GLenum(GL_RGBA8), width, height);
-            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_COLOR_ATTACHMENT0), GLenum(GL_RENDERBUFFER), colorRenderbuffer);
+            glGenRenderbuffers(1, &colorRenderbuffer)
+            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), colorRenderbuffer)
+            glRenderbufferStorage(GLenum(GL_RENDERBUFFER), GLenum(GL_RGBA8), width, height)
+            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_COLOR_ATTACHMENT0), GLenum(GL_RENDERBUFFER), colorRenderbuffer)
             
-            glGenRenderbuffers(1, &depthRenderbuffer);
-            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), depthRenderbuffer);
-            glRenderbufferStorage(GLenum(GL_RENDERBUFFER), GLenum(GL_DEPTH_COMPONENT16), width, height);
-            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_DEPTH_ATTACHMENT), GLenum(GL_RENDERBUFFER), depthRenderbuffer);
+            glGenRenderbuffers(1, &depthRenderbuffer)
+            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), depthRenderbuffer)
+            glRenderbufferStorage(GLenum(GL_RENDERBUFFER), GLenum(GL_DEPTH_COMPONENT16), width, height)
+            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_DEPTH_ATTACHMENT), GLenum(GL_RENDERBUFFER), depthRenderbuffer)
         
-            var status: GLenum = glCheckFramebufferStatus(GLenum(GL_FRAMEBUFFER)) ;
-            if(status != GL_FRAMEBUFFER_COMPLETE) {
+            var status: GLenum = glCheckFramebufferStatus(GLenum(GL_FRAMEBUFFER))
+            if status != GL_FRAMEBUFFER_COMPLETE {
                 print("Framebuffer not complete: \(status)")
             } else {
                 print("Framebuffer complete: \(framebuffer)")
@@ -428,6 +431,16 @@ class LibretroFrontend: ObservableObject {
         @convention(c) (UnsafeRawPointer?, Int32, Int32, Int) -> Void = {
             (data, width, height, pitch) in
             guard let frontend = globalLibretroFrontend else { return }
+            
+            if data == UnsafeRawPointer(bitPattern: -1) {
+                print("[VideoRefreshCallback] Hardware rendering: \(width) \(height)")
+                // Hardware rendering case
+                frontend.currentVideoWidth = Int(width)
+                frontend.currentVideoHeight = Int(height)
+                frontend.needsRedraw = true
+            } else {
+                // Software rendering case (not implemented for now)
+            }
         }
 
     private let inputPollCallback: @convention(c) () -> Void = {
@@ -650,3 +663,4 @@ class LibretroFrontend: ObservableObject {
 struct retro_log_callback {
     var log: (@convention(c) (UInt32, UnsafePointer<CChar>?) -> Void)?
 }
+
