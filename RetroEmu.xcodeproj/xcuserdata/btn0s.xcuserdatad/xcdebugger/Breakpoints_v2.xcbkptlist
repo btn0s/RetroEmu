@@ -7,15 +7,15 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "74E38F81-1290-419A-81EC-1976623FB2E5"
+            uuid = "A6FAB069-9E5A-44FA-90BA-BC8A60ABEAB4"
             shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "../ppsspp/libretro/libretro.cpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1343"
-            endingLineNumber = "1343"
+            startingLineNumber = "1347"
+            endingLineNumber = "1347"
             landmarkName = "EmuFrame()"
             landmarkType = "9">
          </BreakpointContent>
@@ -23,33 +23,33 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "68134A37-09D5-492E-847E-C420DA4B447D"
-            shouldBeEnabled = "Yes"
+            uuid = "84FD8071-E30A-40D1-B34B-601987AFD768"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "../ppsspp/libretro/libretro.cpp"
+            filePath = "../ppsspp/GPU/GPUCommon.cpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1457"
-            endingLineNumber = "1457"
-            landmarkName = "retro_load_game(game)"
-            landmarkType = "9">
+            startingLineNumber = "80"
+            endingLineNumber = "80"
+            landmarkName = "GPUCommon::BeginHostFrame()"
+            landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "F2EE57FC-E7CE-40FC-8A5D-8DBEECA322F3"
+            uuid = "68519588-019B-4CA9-89FC-575087226011"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "../ppsspp/libretro/libretro.cpp"
+            filePath = "../ppsspp/GPU/GPUCommonHW.cpp"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1497"
-            endingLineNumber = "1497"
-            landmarkName = "retro_load_game(game)"
-            landmarkType = "9">
+            startingLineNumber = "484"
+            endingLineNumber = "484"
+            landmarkName = "GPUCommonHW::UpdateCmdInfo()"
+            landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

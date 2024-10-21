@@ -46,8 +46,10 @@ class LibretroFrontend: ObservableObject {
     var glContext: EAGLContext?
     var eaglLayer: CAEAGLLayer?
     var hwRenderCallback: retro_hw_render_callback?
+    
     var framebuffer: GLuint = 0
-    var renderbuffer: GLuint = 0
+    var colorRenderbuffer: GLuint = 0
+    var depthRenderbuffer: GLuint = 0
 
     init(dylibPath: String, isoPath: String) {
         self.dylibPath = dylibPath
@@ -242,8 +244,19 @@ class LibretroFrontend: ObservableObject {
             if let data = data?.assumingMemoryBound(to: retro_log_callback.self) {
                 data.pointee.log = { (level: UInt32, fmt: UnsafePointer<CChar>?) in
                     guard let fmt = fmt else { return }
+                    
                     let message = String(cString: fmt)
-                    print("[\(level)] \(message)")
+                    
+                    let logLevel: String
+                    switch level {
+                        case 0: logLevel = "DEBUG"
+                        case 1: logLevel = "INFO"
+                        case 2: logLevel = "WARN"
+                        case 3: logLevel = "ERROR"
+                        default: logLevel = "UNKNOWN"
+                    }
+                    
+                    print("[\(logLevel)] \(message)")
                 }
                 return true
             }
@@ -331,17 +344,27 @@ class LibretroFrontend: ObservableObject {
                 kEAGLDrawablePropertyRetainedBacking: false,
                 kEAGLDrawablePropertyColorFormat: kEAGLColorFormatRGBA8
             ]
+            
+            var width: GLsizei = 0, height: GLsizei = 0
 
-            // Create framebuffer and renderbuffer
-            glGenFramebuffers(1, &framebuffer)
-            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), framebuffer)
-
-            glGenRenderbuffers(1, &renderbuffer)
-            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), renderbuffer)
-
-            // Attach renderbuffer to framebuffer
-            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_COLOR_ATTACHMENT0), GLenum(GL_RENDERBUFFER), renderbuffer)
-
+            glGenFramebuffers(1, &framebuffer);
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), framebuffer);
+            
+            glGenRenderbuffers(1, &colorRenderbuffer);
+            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), colorRenderbuffer);
+            glRenderbufferStorage(GLenum(GL_RENDERBUFFER), GLenum(GL_RGBA8), width, height);
+            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_COLOR_ATTACHMENT0), GLenum(GL_RENDERBUFFER), colorRenderbuffer);
+            
+            glGenRenderbuffers(1, &depthRenderbuffer);
+            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), depthRenderbuffer);
+            glRenderbufferStorage(GLenum(GL_RENDERBUFFER), GLenum(GL_DEPTH_COMPONENT16), width, height);
+            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_DEPTH_ATTACHMENT), GLenum(GL_RENDERBUFFER), depthRenderbuffer);
+        
+            var status: GLenum = glCheckFramebufferStatus(GLenum(GL_FRAMEBUFFER)) ;
+            if(status != GL_FRAMEBUFFER_COMPLETE) {
+                print("Framebuffer not complete: \(status)")
+            }
+            
             // Set the get_current_framebuffer callback
             hwRenderCallback.get_current_framebuffer = getCurrentFramebuffer
 
