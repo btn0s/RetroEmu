@@ -3,6 +3,7 @@ import CoreGraphics
 import Foundation
 import GLKit
 import GameController
+import OpenGLES
 
 // Global variable to hold our LibretroFrontend instance
 var globalLibretroFrontend: LibretroFrontend?
@@ -45,6 +46,8 @@ class LibretroFrontend: ObservableObject {
     var glContext: EAGLContext?
     var eaglLayer: CAEAGLLayer?
     var hwRenderCallback: retro_hw_render_callback?
+    var framebuffer: GLuint = 0
+    var renderbuffer: GLuint = 0
 
     init(dylibPath: String, isoPath: String) {
         self.dylibPath = dylibPath
@@ -220,6 +223,7 @@ class LibretroFrontend: ObservableObject {
         log("Starting emulator loop...")
         isRunning = true
 
+        hwRenderCallback?.context_destroy()
         hwRenderCallback?.context_reset()
 
         displayLink = CADisplayLink(target: self, selector: #selector(step))
@@ -295,9 +299,9 @@ class LibretroFrontend: ObservableObject {
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER:
             if let data = data?.assumingMemoryBound(to: retro_hw_render_callback.self) {
-                print(
-                    "Setting up hardware rendering with context type: \(data.pointee.context_type)")
+                print("Setting up hardware rendering with context type: \(data.pointee.context_type)")
                 setupHardwareRendering(data.pointee)
+                data.pointee = self.hwRenderCallback!
                 return true
             }
 
@@ -312,29 +316,54 @@ class LibretroFrontend: ObservableObject {
     // MARK: - Hardware Rendering
 
     private func setupHardwareRendering(_ hwRender: retro_hw_render_callback) {
-        self.hwRenderCallback = hwRender
+        var hwRenderCallback = hwRender
 
         print("Setting up hardware rendering with context type: \(hwRender.context_type)")
 
-        let api: EAGLRenderingAPI =
-            hwRender.context_type == RETRO_HW_CONTEXT_OPENGLES3 ? .openGLES3 : .openGLES2
+        let api: EAGLRenderingAPI = hwRender.context_type == RETRO_HW_CONTEXT_OPENGLES3 ? .openGLES3 : .openGLES2
         glContext = EAGLContext(api: api)
 
         if let context = glContext {
             EAGLContext.setCurrent(context)
 
+            eaglLayer = CAEAGLLayer()
             eaglLayer?.drawableProperties = [
                 kEAGLDrawablePropertyRetainedBacking: false,
-                kEAGLDrawablePropertyColorFormat: kEAGLColorFormatRGBA8,
+                kEAGLDrawablePropertyColorFormat: kEAGLColorFormatRGBA8
             ]
 
-            hwRenderCallback?.get_proc_address = { symbolPtr in
+            // Create framebuffer and renderbuffer
+            glGenFramebuffers(1, &framebuffer)
+            glBindFramebuffer(GLenum(GL_FRAMEBUFFER), framebuffer)
+
+            glGenRenderbuffers(1, &renderbuffer)
+            glBindRenderbuffer(GLenum(GL_RENDERBUFFER), renderbuffer)
+
+            // Attach renderbuffer to framebuffer
+            glFramebufferRenderbuffer(GLenum(GL_FRAMEBUFFER), GLenum(GL_COLOR_ATTACHMENT0), GLenum(GL_RENDERBUFFER), renderbuffer)
+
+            // Set the get_current_framebuffer callback
+            hwRenderCallback.get_current_framebuffer = getCurrentFramebuffer
+
+            hwRenderCallback.get_proc_address = { symbolPtr in
                 guard let symbol = symbolPtr else { return nil }
                 let symbolName = String(cString: symbol)
-                return unsafeBitCast(
-                    dlsym(dlopen(nil, RTLD_LAZY), symbolName), to: retro_proc_address_t.self)
+                return unsafeBitCast(dlsym(dlopen(nil, RTLD_LAZY), symbolName), to: retro_proc_address_t.self)
             }
+
+            // Save the modified callback
+            self.hwRenderCallback = hwRenderCallback
         }
+    }
+
+    // Static method to get the current framebuffer
+    let getCurrentFramebuffer: retro_hw_get_current_framebuffer_t = {
+        guard let frontend = globalLibretroFrontend else {
+            print("globalLibretroFrontend is nil")
+            return 0
+        }
+        print("Returning framebuffer: \(frontend.framebuffer)")
+        return UInt(frontend.framebuffer)
     }
 
     // MARK: - Callbacks
@@ -514,3 +543,4 @@ class LibretroFrontend: ObservableObject {
 struct retro_log_callback {
     var log: (@convention(c) (UInt32, UnsafePointer<CChar>?) -> Void)?
 }
+
